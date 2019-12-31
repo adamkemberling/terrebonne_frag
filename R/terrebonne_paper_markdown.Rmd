@@ -1,0 +1,266 @@
+---
+title: "Terrebonne Paper Markdown"
+author: "Adam A Kemberling"
+date: "June 19, 2018"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Exploration
+
+This markdown document is for sharing the data exploration and analyses completed for the Terrebonne Bay marsh fragmentation paper tentatively titled : "Relating Marsh Fragmentation to Emergent and Submerged Vegetation Cover in a Rapidly Changing Coastal Landscape".
+
+Data was collected in April and September of 2016, at/near 3 CRMS sites (311, 345, 369), each representing areas of high, intermediate, and low annual salinity measurements. Within each site there were 9 sub-sites chosen which spanned the degree of marsh fragmentation at each site.
+
+## Emergent Vegetation
+At each of these subsites data was collected on the diversity and richness of emergent vegetation at 21 stations. At each station a 5m transect was surveyed, with quadrats done at 0m, 2.5m, and 5m from the marsh edge, recording the percent cover of each species present. Elevation was recorded during the April sampling period.
+
+## Open Water Survey Data
+At each subsite 20 open water stations were sampled to document submerged aquatic vegetation presence and record water quality parameters (depth, salinity, temperature, do, PAR)
+
+## CRMS site data
+At each site a hydrographic datalogger records hourly data on certain water quality parameters which can be used to get yearly/monthly/daily averages for the site. The available parameters include: temperature, salinity, conductance, water level, and marsh mat elevation. 
+
+```{r data and package management, echo=FALSE, warning=FALSE, message=FALSE}
+library(readxl)
+library(tidyverse)
+library(vegan)
+library(rgdal)
+library(lubridate)
+
+#Move up one level to data sources
+setwd('..')
+
+#Import datasets
+boga <- read_xlsx("Bogaert calculation.xlsx")
+frag50 <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
+marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
+water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
+frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
+throws <- read_xlsx("throw_trap_pts.dbf.xlsx") #contains midpoint coordinates used to create high res boxes
+
+#make any class/formatting changes
+marsh$correct_elev_m <- as.numeric(marsh$correct_elev_m)
+marsh$depth_cm <- as.numeric(marsh$depth_cm)
+marsh$crms_site <- factor(marsh$crms_site, levels = c("311", "345", "369"))
+
+#make percent bare column
+marsh$perc_bare <- rep(0, nrow(marsh))
+for (i in 1:nrow(marsh)){
+marsh$perc_bare[i] <- 100 - sum(marsh[i,12:34], na.rm = TRUE)
+}
+
+#month sampling periods
+marsh <- marsh %>% mutate(month = ifelse(lubridate::month(date) == 4, "April", "September"))
+
+#Diversity indices
+pcov_matrix <- as.matrix(marsh[,12:34])   #make a matrix of the percent cover values
+
+#standardize them
+t1 <- decostand(pcov_matrix, method = "max")
+
+#Species richness
+marsh$Richness <- specnumber(pcov_matrix)
+marsh$Shannon <- diversity(t1, "shannon")
+marsh$Simpson <- diversity(t1, "simpson")
+
+#compare them, should be correlated
+marsh$frag <- factor(toupper(marsh$frag), levels = c("L","M","H"))
+```
+
+# 1. Marsh Fragmentation Dataset
+
+This dataset will be used to investigate the potential impact of environmental factors on species richness/diversity, and community composition.
+
+## The  Study Area:
+```{r marsh study area, echo=FALSE, message=FALSE, warning=FALSE}
+#plot site locations
+library(ggmap)
+marsh$longitude <- as.numeric(marsh$longitude); marsh$latitude <- as.numeric(marsh$latitude)                  #make lats/longs numeric
+     
+#get satellite map function
+local_map <- function(x,y, buffer) {
+  e1 <- c(min(x, na.rm = TRUE) - buffer, min(y, na.rm = TRUE) - buffer, 
+          max(x, na.rm = TRUE) + buffer, max(y, na.rm = TRUE) + buffer)
+  get_map(location = c(e1), source = "google", maptype = "satellite")
+}
+
+#maps
+satmap <- local_map(marsh[,"longitude"], marsh[,"latitude"], 0.05)
+site.names <- data.frame(site = c("369", "345", "311" ), 
+                         longitude = c(-90.71492, -90.76659, -90.73892),
+                         latitude = c(29.29509, 29.21496, 29.18148))
+
+#plot with satellite map
+ggmap(satmap,
+      extent = "device", # "panel" keeps in axes, etc.
+      ylab = "Latitude",
+      xlab = "Longitude",
+      legend = "right") +
+  geom_point(data = marsh,
+             aes(x = longitude, y = latitude, colour = frag)) +
+  geom_label(data = site.names, aes(x = longitude, y = latitude, label = site))
+```
+
+## Possible Response Variables:
+Richness
+Diversity Indices (Shannon, Simpson)
+Dissimilarity Indices (Bray-Curtis)
+
+## Fixed Effects:
+Local:   
+Depth   
+Elevation  
+Distance From Edge   
+Bogaert fragmentation score ?   
+
+Site level:   
+*Accompanying CRMS Data, yearly max/min/average   
+salinity    
+temperature   
+water level   
+
+```{r fixed effects overview, echo=FALSE, warning=FALSE}
+ggplot(marsh, aes(dist_from_edge_m, Richness)) +
+  geom_jitter(height = 0.1, width = 0.1) +
+  facet_grid(~ crms_site) +
+  xlab("Distance from Edge (m)") +
+  ylab("# of Species")
+
+ggplot(marsh, aes(depth_cm, Richness)) +
+  geom_jitter(height = 0.1, width = 0.1) +
+  facet_grid(~ crms_site) +
+  xlab("Water Depth (cm)") +
+  ylab("# of Species")
+
+ggplot(marsh, aes(correct_elev_m, Richness)) +
+  geom_jitter(height = 0.1, width = 0.1) +
+  facet_grid(~ crms_site) +
+  xlab("Elevation") +
+  ylab("# of Species")
+
+```
+
+## Random Effects:
+Month   
+Fragmentation   
+Site   
+Subsite   
+Transect/station   
+
+```{r random effects overview, echo=FALSE, warning=FALSE}
+ggplot(marsh, aes(Richness)) +
+  geom_histogram() +
+  facet_grid(~ crms_site + frag) 
+
+ggplot(data = marsh, aes(frag, Richness)) +
+  geom_boxplot(aes(fill = frag)) +
+  facet_wrap(~ month + crms_site) +
+  coord_flip() +
+  ggtitle("Species Richness")
+
+ggplot(data = marsh, aes(frag, Shannon)) +
+  geom_boxplot(aes(fill = frag)) +
+  facet_wrap(~ month + crms_site) +
+  coord_flip() +
+  ggtitle("Shannon Diversity")
+
+ggplot(data = marsh, aes(frag, Simpson)) +
+  geom_boxplot(aes(fill = frag)) +
+  facet_wrap(~ month + crms_site) +
+  coord_flip() +
+  ggtitle("Simpsons Diversity")
+
+```
+
+Note that the data available through the freely available crms site data is down to the site level, and would serve to characterize any significant difference we may see between sites.
+
+
+# Open Water Survey Dataset
+
+
+This dataset will be used to investigate the potential impact of environmental factors on the presence of various SAV species at different levels of fragmentation.
+
+## Possible Response Variables:
+presence/abundance seagrass
+
+## Fixed Effects:
+salinity   
+depth   
+temperature   
+PAR   
+light attenuation ($K_d$)
+
+## Random Effects
+Month   
+Fragmentation   
+Site   
+Subsite   
+
+# Calculating Light Attenuation
+
+The Texas seagrass monitoring protocols give two equations to use with the Li-cor PAR measurements:   
+
+1. Percent surface irradiance available at the seagrass canopy is calculated as follows:   
+$$\%SI=(i_z/i_o) * 100$$
+This equation gives the percent of light lost between measurements at depth $I_z$ and at the surface $I_0$, and ranges from 0-1.   
+
+2. Light attenuation is calculated using the transformed Beer-Lambert equation:  
+$$ k_d = \frac{-[ln(Iz/Io)]}{z} $$ 
+where k is the attenuation coefficient (m-1) and Iz and I0 are irradiance (µmol photons m-2 sec-1) at
+depth z (meters) and at the surface, respectively. With a distance of z=0.15 between bulbs, $k_d$ calculates for attenuation per 15cm and doesn't necessarily scale 0-1. 
+
+
+```{r k calculation, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+
+#PAR
+water$top_par1 <- as.numeric(water$top_par1)
+water$top_par2 <- as.numeric(water$top_par2)
+water$bot_par1 <- as.numeric(water$bot_par1)
+water$bot_par2 <- as.numeric(water$bot_par2)
+
+#distance between sensors
+sp <- .15
+
+#make light attenuation measurement 
+'Measuring Light Attenuation in Shallow Coastal Systems
+Ana C. Brito1, Alice Newton, Teresa F. Fernandes, and Paul Tett'
+water <- water %>% mutate(
+  top_avg = ((top_par1 + bot_par1)/2),                                      #bulb 1 is top bulb 
+  bot_avg = ((bot_par2 + bot_par2)/2),                                      #bulb 2 is low bulb
+  Kd_surface = -(log10(top_par2 / top_par1)) / sp,                          #Kd at surface, per meter 
+  Kd_bottom = -(log10(bot_par2 / bot_par1)) / sp,                           #Kd at depth, per meter
+  Kd_bot_test = Kd_bottom / (6 + (2/3)),                                    #attenuation per .15m
+  Kd_surf_test = Kd_surface / (6 + (2/3)))
+  
+#highlighing subsets
+p <- ggplot(water, aes(Kd_surface, Kd_bottom)) +
+  geom_point() +
+  geom_point(data = filter(water, top_par2 > top_par1), aes(Kd_surface, Kd_bottom), colour = "red") +
+  geom_point(data = filter(water, bot_par2 > bot_par1), aes(Kd_surface, Kd_bottom), colour = "blue")
+#ggplotly(p)
+p
+
+
+```
+
+red = bottom bulb has greater value than top bulb for surface measurement or top_par2 > top_par1   
+blue = bot_par_2 > bot_par_1
+
+
+
+
+
+
+
+
+
+
+
+ 

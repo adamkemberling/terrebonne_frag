@@ -1,0 +1,533 @@
+---
+title: "Richness & Diversity"
+author: "Adam A Kemberling"
+date: "July 11, 2018"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: yeti
+    vertical_layout: fill
+---
+
+
+Page 1 - Simpson 1
+=====================================  
+
+    
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - GLMM Simposon's Index ~ elevation + bogaert + (1 | crms site)
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Model Summary
+```{r libraries and data, echo = F, message = F, warning = F}
+library(readxl)
+library(tidyverse)
+library(vegan)
+library(rgdal)
+library(ggThemeAssist)
+library(extrafont)
+library(car)
+library(lme4)
+library(MuMIn)
+library(afex)
+
+full.t <- read_csv("all_transect_data.csv")
+
+new.df <- filter(full.t, dist_from_edge_m != "full_transect", Simpson != 1)
+new.df$crms_site <- factor(new.df$crms_site, levels = c('345', '311', '369'))
+#change labels
+new.df$crms_site <- str_c("0", new.df$crms_site)
+new.df$crms_site <- factor(new.df$crms_site, levels = c('0345', '0311', '0369'))
+#fragmentation as factor
+new.df$bog.f <- parse_factor(as.character(round(as.numeric(as.character(new.df$bogaert)), digits = 2)), 
+  levels = ,c(as.character(sort(unique(round(as.numeric(as.character(new.df$bogaert)), digits = 2)), decreasing = T))))
+
+#scale continuous predictors for effect testing
+new.df$bogaert_scaled <- (new.df$bogaert - mean(new.df$bogaert))/ sd(new.df$bogaert)
+new.df$elevation_scaled <- (new.df$correct_elev_m - mean(new.df$correct_elev_m, na.rm = T))/ sd(new.df$correct_elev_m, na.rm = T)
+
+mod1 <- lmer(Simpson ~  bogaert + (1 | crms_site), data = new.df)
+summary(mod1)
+```
+
+AIC score
+```{r, echo=F}
+AIC(mod1)
+```
+
+R-squared values
+```{r, echo=F}
+r.squaredGLMM(mod1)
+
+```
+
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+
+```{r, echo = F, warning = F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(Simpson ~ bogaert, data = new.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Simpson Diversity Index Scores")
+for (i in 1:length(unique(new.df$crms_site))) {
+  abline(coef(mod1)$crms_site[i,1],coef(mod1)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+ 
+###  Likelihood Ratio test
+
+The approach to a likelihood ratio test is to compare the full model to a reduced and null model using an anova.
+
+Basically, the test compares the fit of two models. The null hypothesis is that the smaller model is the “best” model; It is rejected when the test statistic is large. In other words, if the null hypothesis is rejected, then the larger model is a significant improvement over the smaller one.
+
+Keep in mind that LRT-based null hypothesis tests are conservative when the null value (such as σ2=0) is on the boundary of the feasible space; in the simplest case (single random effect variance), the p-value is approximately twice as large as it should be (Pinheiro and Bates 2000).
+
+1. Test full model against model without random effect to test for its significance
+```{r}
+m1 <- lmer(Simpson ~  bogaert + (1 | crms_site), data = new.df)
+m0 <- lm(Simpson ~ bogaert, new.df)
+anova(m1,m0) ## two sequential tests
+```
+
+2. calculate p-values for fixed effects
+```{r}
+mixed(Simpson ~  bogaert_scaled + (1 | crms_site), data = new.df, method = 'LRT')
+```
+
+
+
+
+
+
+
+
+Page 2 - Richness 1
+=====================================  
+
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - GLMM Richness ~ bogaert + (1 | crms site)
+    
+```{r Richness mod1 setup, echo = F, message = F, warning = F}
+
+mod2 <- lmer(Richness ~ bogaert + (1 | crms_site), data = new.df)
+summary(mod2)
+```
+
+AIC score
+```{r, echo=F}
+AIC(mod2)
+```
+
+R-squared values
+```{r, echo=F}
+r.squaredGLMM(mod2)
+
+```
+
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+```{r, Richness GLMM1, echo = F, warning = F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(Richness ~ bogaert, data = new.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Species Richness")
+for (i in 1:length(unique(new.df$crms_site))) {
+  abline(coef(mod2)$crms_site[i,1],coef(mod2)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+ 
+###  Likelihood Ratio test
+
+1. Random Effect
+```{r, echo=FALSE}
+m2 <- lmer(Richness ~ bogaert + (1 | crms_site) , data = new.df)
+m0 <- lm(Richness ~ bogaert, new.df)
+anova(m2,m0) ## two sequential tests
+```
+
+
+2. calculate p-values for fixed effects
+```{r, echo=FALSE}
+mixed(Richness ~  bogaert_scaled + (1 | crms_site), data = new.df, method = 'LRT')
+```
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+
+
+
+
+
+
+
+
+Page 3 - Richness 3
+=====================================  
+
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - GLMM Richness ~ bogaert + (1 | crms site) famil = 'poisson'
+    
+```{r Richness mod2 setup, echo = F, message = F, warning = T}
+
+mod3 <- glmer(Richness ~ bogaert + (1 | crms_site) , data = new.df, family = poisson)
+summary(mod3)
+```
+
+
+AIC score
+```{r, echo=F}
+AIC(mod3)
+```
+
+R-squared values
+```{r, echo=F}
+r.squaredGLMM(mod3)
+
+```
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+```{r, Richness GLMM2, echo = F, warning = F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(Richness ~ bogaert, data = new.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Species Richness")
+for (i in 1:length(unique(new.df$crms_site))) {
+  abline(coef(mod3)$crms_site[i,1],coef(mod3)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+ 
+###  Likelihood Ratio test
+1. Random effect
+```{r, echo=FALSE}
+m3 <- glmer(Richness ~ bogaert + (1 | crms_site) , data = new.df, family = poisson)
+m0 <- lm(Richness ~ bogaert, new.df)
+anova(m3,m0) 
+```
+
+2. calculate p-values for fixed effects
+```{r, echo=FALSE}
+mixed(Richness ~ bogaert_scaled + (1 | crms_site), data = new.df, method = 'LRT')
+```
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+
+Page 4 - Elevation 1
+=====================================  
+
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - GLMM Marsh Elevation ~ bogaert + (1 | crms site)
+
+
+```{r Elevation mod setup, echo = F, message = F, warning = F}
+
+mod4 <- lmer(correct_elev_m ~ bogaert + (1 | crms_site) , data = new.df)
+summary(mod4)
+```
+
+AIC score
+```{r, echo=F}
+AIC(mod4)
+```
+
+R-squared values
+```{r, echo=F}
+r.squaredGLMM(mod4)
+
+```
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+```{r, Elevation GLMM, echo = F, warning = F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(correct_elev_m ~ bogaert, data = new.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Marsh Elevation (m)")
+for (i in 1:length(unique(new.df$crms_site))) {
+  abline(coef(mod4)$crms_site[i,1],coef(mod4)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+
+
+
+
+###  Likelihood Ratio test
+
+1. Random effect
+```{r, echo=FALSE}
+m4 <- lmer(correct_elev_m ~ bogaert + (1 | crms_site) , data = new.df)
+m0 <- lm(correct_elev_m ~ bogaert, new.df)
+anova(m4,m0) 
+```
+
+2. calculate p-values for fixed effects
+```{r, echo=FALSE}
+mixed(correct_elev_m ~ bogaert_scaled + (1 | crms_site), data = new.df, method = 'LRT')
+```
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+
+
+
+
+
+Page 5 - Simpson 2
+=====================================  
+
+    
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - GLMM Simposon's Index ~ elevation + bogaert + (1 | crms site)
+
+```{r Simpson mod2 setup, echo = F, message = F, warning = F}
+
+mod5 <- lmer(Simpson ~ correct_elev_m + bogaert + (1 | crms_site) , data = new.df)
+summary(mod5)
+```
+
+
+AIC score
+```{r, echo=F}
+AIC(mod5)
+```
+
+R-squared values
+```{r, echo=F}
+r.squaredGLMM(mod5)
+
+```
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+```{r, Simpson GLMM2, echo = F, warning = F, include=F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(correct_elev_m ~ bogaert, data = new.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Simpson's Diversity Index")
+for (i in 1:length(unique(new.df$crms_site))) {
+  abline(coef(mod5)$crms_site[i,1],coef(mod5)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+
+###  Likelihood Ratio test
+
+1. Random Effect
+```{r, echo=FALSE}
+m5 <- lmer(Simpson ~ correct_elev_m + bogaert + (1 | crms_site) , data = new.df)
+m0 <- lm(Simpson ~ correct_elev_m + bogaert, new.df)
+anova(m5,m0) 
+```
+
+2. calculate p-values for fixed effects
+```{r, echo=FALSE}
+mixed(Simpson ~ elevation_scaled + bogaert_scaled + (1 | crms_site) , data = new.df[is.na(new.df$correct_elev_m) != TRUE,], method = 'LRT')
+```
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+Page 6 - Richness 3
+=====================================  
+
+    
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - Richness ~ elevation + bogaert + (1 | crms site)
+
+```{r Richness mod3 setup, echo = F, message = F, warning = F}
+
+mod6 <- lmer(Richness ~ correct_elev_m + bogaert + (1 | crms_site) , data = new.df)
+summary(mod6)
+```
+
+
+AIC score
+```{r, echo=F}
+AIC(mod6)
+```
+
+R-squared values
+```{r, echo=F}
+r.squaredGLMM(mod6)
+
+```
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+```{r, Richness GLMM3, echo = F, warning = F, include=F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(correct_elev_m ~ bogaert, data = new.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Species Richness")
+for (i in 1:length(unique(new.df$crms_site))) {
+  abline(coef(mod6)$crms_site[i,1],coef(mod6)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+
+###  Likelihood Ratio test
+
+1. Random Effect
+```{r, echo=FALSE}
+m6 <- lmer(Richness ~ correct_elev_m + bogaert + (1 | crms_site) , data = new.df)
+m0 <- lm(Richness ~ correct_elev_m + bogaert, new.df)
+anova(m6,m0) 
+```
+
+2. calculate p-values for fixed effects
+```{r, echo=FALSE}
+mixed(Richness ~ elevation_scaled + bogaert_scaled + (1 | crms_site) , data = new.df[is.na(new.df$correct_elev_m) != TRUE,], method = 'LRT')
+```
+
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.
+
+
+
+
+
+
+
+
+Page 7 - %SI
+=====================================  
+
+Column {data-width=500}
+-------------------------------------
+    
+### Model Summary - GLMM %SI ~ bogaert + (1 | crms site)
+```{r SI mod3 setup, echo = F, message = F, warning = F}
+water.df <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
+
+#make light attenuation measurement 
+sp <- .15
+water.df <- water.df %>% mutate(
+  month = ifelse(lubridate::month(date) == 4, "April", "September"),
+  sal = as.numeric(sal),
+  correct_elev_m = as.numeric(correct_elev_m),
+  crms_site = factor(crms_site, levels = c("369", "311", "345")),
+  frag = toupper(frag),
+  subsite_id = str_c(crms_site, frag, sep = '-'),
+  depth_cm = as.numeric(depth_cm),
+  top_par1 = as.numeric(top_par1),                                          #bulb 1 is top bulb
+  top_par2 = as.numeric(top_par2),                                          #bulb 2 is low bulb
+  bot_par1 = as.numeric(bot_par1),
+  bot_par2 = as.numeric(bot_par2),                                                                       
+  Kd_surface = -(log10(top_par1 / top_par2)) / sp,                          #attenuation per .15m for surface measurements
+  Kd_bottom = -(log10(bot_par1 / bot_par2)) / sp,                           #Kd at bottom, per .15m                     #multiply light lost in 15cm by (total depth/15cm increments)
+  SI_full = (bot_par2/top_par1) * 100) %>% 
+  filter(month == "April") 
+
+bog.df <- structure(list(subsite_id = c("369-L", "369-M", "369-H", "311-L", "311-M", "311-H", "345-L", "345-M", "345-H"), 
+                         bogaert = c(157.409232427562,158.794835413732, 144.600763346679, 152.825951296738, 147.180047035677, 
+                                     139.741186393264, 145.714196114844, 148.353319527527, 139.722070072008)), 
+                    class = "data.frame", row.names = c(NA, -9L))
+
+#added bogaert scores
+water.df <- left_join(water.df, bog.df, by = "subsite_id")
+water.df$SI <- water.df$SI_full/100
+
+#Standardize covariates for effect size testing
+water.df$bogaert_scaled <- (water.df$bogaert - mean(water.df$bogaert, na.rm = T))/ sd(water.df$bogaert, na.rm = T)
+
+#rename crms sites
+#change labels
+water.df$crms_site <- str_c("0", water.df$crms_site)
+water.df$crms_site <- factor(water.df$crms_site, levels = c('0345', '0311', '0369'))
+```
+
+
+```{r, echo = FALSE, warning=FALSE}
+#make the model
+mod7 <- lmer(SI_full ~ bogaert + (1 | crms_site) , data = water.df)
+summary(mod7)
+```
+AIC Score
+```{r, echo=FALSE}
+AIC(mod7)
+```
+
+R-squared values
+```{r, echo=FALSE}
+r.squaredGLMM(mod7)
+
+
+```
+
+Column {data-width=500}
+-------------------------------------
+   
+### Plotting the GLMM
+```{r, echo = F, warning = F, include=F}
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(SI_full ~ bogaert, data = water.df, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "% Surface Irradiance at Bottom")
+for (i in 1:length(unique(water.df$crms_site))) {
+  abline(coef(mod7)$crms_site[i,1],coef(mod7)$crms_site[i,2], lty = i, lwd = 2)
+}
+```   
+
+###  Likelihood Ratio test
+
+1. Random Effect
+```{r, echo=FALSE}
+m7 <- lmer(SI_full ~ bogaert + (1 | crms_site) , data = water.df)
+m0 <- lm(SI_full ~  bogaert, water.df)
+anova(m7,m0) 
+```
+
+2. calculate p-values for fixed effects
+```{r, echo=FALSE}
+mixed(SI_full ~ bogaert_scaled + (1 | crms_site) , data = water.df, method = 'LRT')
+```
+
+
+For some reason that I don't understand these sections won't scroll down unless I add more text here and I don't want to waste time troubleshooting it so I'm just going top do add this everywhere at the bottom of the codeblocks.

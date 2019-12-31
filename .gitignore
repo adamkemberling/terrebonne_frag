@@ -3,4 +3,6 @@
 .RData
 .Ruserdata
 Data/
+docs/
+figures/
 .DS_Store

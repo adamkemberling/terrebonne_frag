@@ -30,7 +30,6 @@ fonts()
 #----------------------------------- Import datasets ----------------------------------
 #--------------------------------------------------------------------------------------
 #Move up one level to data sources
-setwd("L:/Dropbox (The Craboratory)/Terrebonne Fragmentation paper/Data/MarshFrag")
 setwd('..')
 
 
@@ -117,24 +116,24 @@ Station'
 #--------------------------------------------------------------------------------------
 #---------------------------- Marsh Data Manipulation ---------------------------------
 #--------------------------------------------------------------------------------------
-# marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
-# 
-# #make any class/formatting changes
-# str(marsh)
-# 
-# marsh <- marsh %>% mutate(
-#   correct_elev_m = as.numeric(correct_elev_m),
-#   depth_cm = as.numeric(depth_cm),
-#   crms_site = factor(crms_site, levels = c("345", "311", "369")),
-#   month = ifelse(lubridate::month(date) == 4, "April", "September"),
-#   perc_bare = rep(0, nrow(marsh)),
-#   frag = factor(toupper(frag), levels = c("L","M","H"))) %>% 
-#   filter(month == "April") 
-# 
-# #for loop
-# for (i in 1:nrow(marsh)){
-#   marsh$perc_bare[i] <- 100 - sum(marsh[i,12:34], na.rm = TRUE)
-# }
+marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
+
+#make any class/formatting changes
+str(marsh)
+
+marsh <- marsh %>% mutate(
+  correct_elev_m = as.numeric(correct_elev_m),
+  depth_cm = as.numeric(depth_cm),
+  crms_site = factor(crms_site, levels = c("345", "311", "369")),
+  month = ifelse(lubridate::month(date) == 4, "April", "September"),
+  perc_bare = rep(0, nrow(marsh)),
+  frag = factor(toupper(frag), levels = c("L","M","H"))) %>% 
+  filter(month == "April") 
+
+#for loop
+for (i in 1:nrow(marsh)){
+  marsh$perc_bare[i] <- 100 - sum(marsh[i,12:34], na.rm = TRUE)
+}
 
 #map function
 
@@ -1022,13 +1021,6 @@ for (i in 1:length(unique(new.df$crms_site))) {
 }
 
 
-
-#mod 4 - same but with interaction
-mod4 <- lmer(Simpson ~ bogaert + (1 | crms_site) + bogaert * (1 | crms_site), data = new.df)
-
-
-
-
 #Anovas
 new.df$bog.f <- parse_factor(as.character(round(as.numeric(as.character(new.df$bogaert)), digits = 2)), 
   levels = ,c(as.character(sort(unique(round(as.numeric(as.character(new.df$bogaert)), digits = 2)), decreasing = T))))
@@ -1181,8 +1173,7 @@ for (i in 1:length(unique(new.df$crms_site))) {
 
 
 
-#------------------------------- abandoned models -------------------------------------
-#--------------------------------------------------------------------------------------
+#------------- abandoned models ----
 library(betareg)
 # #Negative Binomial
 # mod1 <- glmer.nb(Simpson ~ bogaert + correct_elev_m + ss_sal_mean + (1 | crms_site), data = new.df)
@@ -1268,25 +1259,54 @@ full.t <- read_csv("all_transect_data.csv")
 
 new.df <- filter(full.t, dist_from_edge_m != "full_transect", !is.na(correct_elev_m)) %>% 
   mutate(Dist_from_edge = as.numeric(dist_from_edge_m),
-         Dist_from_edge <- ifelse(Dist_from_edge == 2, 2.5, Dist_from_edge),
          bog_round = round(as.numeric(as.character(bogaert))),
          bog_round = factor(bog_round, levels = sort(unique(bog_round), decreasing =  T))
   )
 
+# GLM, no random effect
+new.df %>% ggplot(aes(Dist_from_edge, correct_elev_m)) +
+  geom_point() + geom_smooth(method = 'lm', colour = 'black') + theme(plot.subtitle = element_text(vjust = 1), 
+    plot.caption = element_text(vjust = 1), 
+    axis.line = element_line(linetype = "solid"), 
+    panel.background = element_rect(fill = NA))
 
-#-------------  plot GLM model
 mod1 <- lm(correct_elev_m ~ Dist_from_edge, data = new.df)
 
 summary(mod1)
 AIC(mod1)
 coef(mod1)
 
+# GLMM
+new.df %>% ggplot(aes(Dist_from_edge, correct_elev_m)) +
+  geom_point() + geom_smooth(method = 'lm', colour = 'black') +
+  facet_wrap(~bog_round)
+
+
+#Elevation is nice and normal, so basic model, gaussian distribution, maximum likelihood estimation
+library(lme4)
+mod2 <- lmer(correct_elev_m ~ Dist_from_edge + (1 | subsite_id), data = new.df, REML = F)
+summary(mod2)
+
+
+#to get p values
+library(car)
+Anova(mod2)
+Anova(mod2, type = 2)
+
+#to get r-squared
+library(MuMIn)
+r.squaredGLMM(mod2)
+
+#Lower Aic scores from glmm
+
+#-------------  plot GLM model
+
 #predict over x range using model coefficients
 x_range <- seq(min(new.df$Dist_from_edge, na.rm = T), max(new.df$Dist_from_edge, na.rm = T), 0.01)
 preddat <- predict(mod1, list(Dist_from_edge = x_range), type = 'response', se.fit=TRUE)
 
 dev.off()
-#png("Elevation_glm.png", height = 4, width = 6, units = "in", res = 300)
+png("Elevation_glm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(correct_elev_m ~ Dist_from_edge, data = new.df, las = 1,
      xlab = "Distance from Marsh Edge (m)", ylab = "Elevation (m)")
@@ -1297,15 +1317,6 @@ dev.off()
 
 
 #----------- plot lme4 model
-library(lme4)
-mod2 <- lmer(correct_elev_m ~ Dist_from_edge + (1 | subsite_id), data = new.df, REML = F)
-
-library(car)
-Anova(mod2, type = 2)
-
-library(MuMIn)
-r.squaredGLMM(mod2)
-
 #extract coefficients from model
 Vcov <- vcov(mod2, useScale = FALSE)                    #calculate variance covariance matrix
 betas <- fixef(mod2)                                    #extract fixed-effects estimates
@@ -1321,7 +1332,7 @@ new.df  %>% group_by(subsite_id) %>% summarise(bogaert_value = mean(bogaert)) %>
 
 
 #Plot them all together
-#png("Elevation_glmm.png", height = 4, width = 6, units = "in", res = 300)
+png("Elevation_glmm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(correct_elev_m ~ Dist_from_edge, data = new.df, las = 1,
      xlab = "Distance from Marsh Edge (m)", ylab = "Elevation (m)")
@@ -1333,471 +1344,79 @@ dev.off()
 
 
 
-#################################  Mod 2.5 ANCOVA  ##################################
-new.df <- new.df %>% mutate(subsite_id = factor(subsite_id, levels = c("345-L", "345-M", "345-H", "311-L", "311-M", "311-H", "369-L", "369-M" ,"369-H")),
-                            dist_from_edge_m = as.numeric(dist_from_edge_m),
-                            Dist_from_edge <- ifelse(Dist_from_edge == 2, 2.5, Dist_from_edge))
-#Assumptions
-#1. independence of covariate (distance from the marsh edge) and the treatment (subsite_id)
 
-#test this by running an anova to see if elevation is equal among the factor level
-t1 <- aov(Dist_from_edge ~ subsite_id, data = new.df)
-summary(t1)
-
-#these results show that dist from edge is not significantly different across subsites, obviously...
-
-#probably should treat it as a factor anyways...
-new.df %>% ggplot(aes(as.factor(Dist_from_edge), correct_elev_m)) + geom_boxplot() + facet_wrap(~subsite_id)
-
-#2. Homogeneity of regression slopes
-new.df %>% ggplot(aes(Dist_from_edge, correct_elev_m)) + geom_point() + geom_smooth(method = "lm") + facet_wrap(~subsite_id)
-
-
-#----------------  ANCOVA model -- NOTE: the order of the predictors matters**  --------------------------------
-distance_model <- aov(correct_elev_m ~ subsite_id + Dist_from_edge, data = new.df )
-
-fact_first <- aov(correct_elev_m ~ subsite_id + Dist_from_edge, data = new.df )
-covariate_first <- aov(correct_elev_m ~ Dist_from_edge + subsite_id, data = new.df )
-
-#To get around this bs you can do this:
-Anova(fact_first, type = "III")
-Anova(covariate_first, type = "III")
-#This changes the way in which the sum of squares to type III, rather than the default type I which does the effects separately and in order
-
-#To do ANCOVA with the interaction (Like for when slopes aren't homogeneous)
-new.mod <- aov(correct_elev_m ~ subsite_id + Dist_from_edge + subsite_id:Dist_from_edge, data = new.df )
-new.mod <- lm(correct_elev_m ~ subsite_id + Dist_from_edge + subsite_id:Dist_from_edge, data = new.df )
-#or this is the same but less explicit aov(correct_elev_m ~ subsite_id * Dist_from_edge, data = new.df )
-
-#Test for significance
-Anova(new.mod, type = "III") #type = "III" is how you should do it for testing like this
-
-#Get coefficients
-coef(new.mod)
-
-
-
-
-
-
-# #does the random slope model perform better than the one with just random intercepts
-# mod1 <- lm(correct_elev_m ~ subsite_id + Dist_from_edge, data = new.df )
-# mod2 <- lm(correct_elev_m ~ subsite_id * Dist_from_edge + subsite_id:Dist_from_edge, data = new.df )
-# anova(mod1, mod2) #yes, it does
-
-
-#------------------------  Plotting the 9 different slopes  ----------------------------
-library(gridExtra) #for putting multiple plots on the same window
-
-theme_set(theme_bw() + theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank()))
-p <- ggplot(new.df, aes(Dist_from_edge, correct_elev_m)) + geom_jitter(height = 0, width = 0.05, color = "gray80") + xlab("Distance from Marsh Edge (m)") + ylab("Marsh Elevation (m)")
-p1 <- ggplot(new.df, aes(Dist_from_edge, correct_elev_m)) + 
-  geom_jitter(height = 0, width = 0.05) + xlab("Distance from Marsh Edge (m)") + ylab("Marsh Elevation (m)")
-  
-#Site 345 regressions
-#345-L
-p345_L <- p + geom_point(data = filter(new.df, subsite_id == "345-L"), aes(Dist_from_edge, correct_elev_m)) + 
-  geom_smooth(data = filter(new.df, subsite_id == "345-L"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black") +
-  geom_text(aes(3.5, 0.25, label = "345-L"))
-
-#345-M
-p345_M <- p + geom_point(data = filter(new.df, subsite_id == "345-M"), aes(Dist_from_edge, correct_elev_m)) + 
-  geom_smooth(data = filter(new.df, subsite_id == "345-M"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black") +
-  geom_text(aes(3.5, 0.25, label = "345-M"))
-
-#p345-H
-p345_H <- p + geom_point(data = filter(new.df, subsite_id == "345-H"), aes(Dist_from_edge, correct_elev_m)) +  
-  geom_smooth(data = filter(new.df, subsite_id == "345-H"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black") +
-  geom_text(aes(3.5, 0.25, label = "345-H"))
-
-
-#Site 311 regressions
-#311-L
-p311_L <- p + geom_point(data = filter(new.df, subsite_id == "311-L"), aes(Dist_from_edge, correct_elev_m)) + 
-  geom_smooth(data = filter(new.df, subsite_id == "311-L"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black")  +
-  geom_text(aes(3.5, 0.25, label = "311-L"))
-
-#311-M
-p311_M <- p + geom_point(data = filter(new.df, subsite_id == "311-M"), aes(Dist_from_edge, correct_elev_m)) + 
-  geom_smooth(data = filter(new.df, subsite_id == "311-M"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black")  +
-  geom_text(aes(3.5, 0.25, label = "311-M"))
-
-#p311-H
-p311_H <- p + geom_point(data = filter(new.df, subsite_id == "311-H"), aes(Dist_from_edge, correct_elev_m)) +  
-  geom_smooth(data = filter(new.df, subsite_id == "311-H"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black")  +
-  geom_text(aes(3.5, 0.25, label = "311-H"))
-
-#Site 369 regressions
-#369-L
-p369_L <- p + geom_point(data = filter(new.df, subsite_id == "369-L"), aes(Dist_from_edge, correct_elev_m)) + 
-  geom_smooth(data = filter(new.df, subsite_id == "369-L"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black")  +
-  geom_text(aes(3.5, 0.25, label = "369-L"))
-
-#369-M
-p369_M <- p + geom_point(data = filter(new.df, subsite_id == "369-M"), aes(Dist_from_edge, correct_elev_m)) + 
-  geom_smooth(data = filter(new.df, subsite_id == "369-M"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black")  +
-  geom_text(aes(3.5, 0.25, label = "369-M"))
-
-#p369-H
-p369_H <- p + geom_point(data = filter(new.df, subsite_id == "369-H"), aes(Dist_from_edge, correct_elev_m)) +  
-  geom_smooth(data = filter(new.df, subsite_id == "369-H"), aes(Dist_from_edge, correct_elev_m), method = "lm", linetype = "dashed", color = "black")  +
-  geom_text(aes(3.5, 0.25, label = "369-H"))
-
-
-#grid.arrange test
-grid.arrange(p1, p345_L, p345_M, p345_H,
-             ncol = 2)
-
-
-
-#grid.arrange test of all of them
-grid.arrange(p345_L, p345_M, p345_H, p311_L, p311_M, p311_H, p369_L, p369_M, p369_H,
-             ncol = 3)
-
-
-#Or
-grid.arrange(p1, p1 + facet_wrap(~subsite_id) + geom_smooth(method = "lm", linetype = 'dashed', color = 'black'),
-             ncol = 2)
-
-
-
-
-
-#keeping this plot for ancova
-new.df$crms_site <- recode_factor(new.df$crms_site, "345" = "0345", "311" = "0311", "369" = "0369")
-ggplot(new.df, aes(Dist_from_edge, correct_elev_m)) + 
-  geom_jitter(height = 0, width = 0.05, pch = 1) + xlab("Distance from Marsh Edge (m)") + ylab("Marsh Elevation (m)") +
-  facet_wrap(~subsite_id) + geom_smooth(method = "lm", linetype = 'dashed', color = 'black')
-ggsave(filename = "Elev_ANCOVA.png", plot = last_plot(), height = 4, width = 6, units = "in", dpi = 300)
-
-
-
-
-
-
-
-
-
-
-
-
-
-####  final plot for ancova  ####
-#1. redo plots for 345 and 311 and remove xlabel
-#2. change the x values from 2 to 2.5
-
-
-p <- ggplot(new.df, aes(Dist_from_edge, correct_elev_m)) + 
-  geom_jitter(height = 0, width = 0.05, color = "gray80", pch = 1) + 
-  xlab("Distance from Marsh Edge (m)") + ylab("Marsh Elevation (m)")
-
-#Site 345 regressions
-#345-L
-L345 <- filter(new.df, subsite_id == "345-L")
-m345L <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "345-L"))
-p345_L <- p + 
-  geom_point(data = L345, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = L345, aes(y = predict(m345L, L345, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = L345, aes(y = (predict(m345L, L345, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m345L, L345, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = L345, aes(y = (predict(m345L, L345, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m345L, L345, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) + 
-  xlab("") + ylab("")  +
-  theme(axis.title.x = element_text(colour = "white"),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.text.x = element_text(colour = "white"))
-
-#345-M
-M345 <- filter(new.df, subsite_id == "345-M")
-m345M <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "345-M"))
-p345_M <- p + 
-  geom_point(data = M345, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = M345, aes(y = predict(m345M, M345, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = M345, aes(y = (predict(m345M, M345, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m345M, M345, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = M345, aes(y = (predict(m345M, M345, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m345M, M345, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +
-  xlab("") + ylab("")  +
-  theme(axis.title.x = element_text(colour = "white"),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.text.x = element_text(colour = "white"),
-        axis.title.y = element_text(colour = "white"),
-        axis.ticks.y = element_line(colour = "white"),
-        axis.text.y = element_text(colour = "white"))
-
-#p345-H
-H345 <- filter(new.df, subsite_id == "345-H")
-m345H <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "345-H"))
-p345_H <- p + 
-  geom_point(data = H345, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = H345, aes(y = predict(m345H, H345, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = H345, aes(y = (predict(m345H, H345, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m345H, H345, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = H345, aes(y = (predict(m345H, H345, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m345H, H345, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +
-  xlab("") + ylab("")  +
-  theme(axis.title.x = element_text(colour = "white"),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.text.x = element_text(colour = "white"),
-        axis.title.y = element_text(colour = "white"),
-        axis.ticks.y = element_line(colour = "white"),
-        axis.text.y = element_text(colour = "white"))
-
-
-#Site 311 regressions
-#311-L
-
-#make plot with error bars from other method
-L311 <- filter(new.df, subsite_id == "311-L")
-m311L <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "311-L"))
-p311_L <- p + 
-  geom_point(data = L311, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = L311, aes(y = predict(m311L, L311, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = L311, aes(y = (predict(m311L, L311, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m311L, L311, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = L311, aes(y = (predict(m311L, L311, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m311L, L311, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) + 
-  xlab("") + 
-  theme(axis.title.x = element_text(colour = "white"),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.text.x = element_text(colour = "white"))
-
-#311-M
-M311 <- filter(new.df, subsite_id == "311-M")
-m311M <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "311-M"))
-p311_M <- p + 
-  geom_point(data = M311, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = M311, aes(y = predict(m311M, M311, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = M311, aes(y = (predict(m311M, M311, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m311M, M311, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = M311, aes(y = (predict(m311M, M311, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m311M, M311, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) + 
-  xlab("") + ylab("") +
-  theme(axis.title.x = element_text(colour = "white"),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.text.x = element_text(colour = "white"),
-        axis.title.y = element_text(colour = "white"),
-        axis.ticks.y = element_line(colour = "white"),
-        axis.text.y = element_text(colour = "white"))
-
-#p311-H
-H311 <- filter(new.df, subsite_id == "311-H")
-m311H <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "311-H"))
-p311_H <- p + 
-  geom_point(data = H311, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = H311, aes(y = predict(m311H, H311, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = H311, aes(y = (predict(m311H, H311, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m311H, H311, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = H311, aes(y = (predict(m311H, H311, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m311H, H311, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) + 
-  xlab("") + ylab("") +
-  theme(axis.title.x = element_text(colour = "white"),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.text.x = element_text(colour = "white"),
-        axis.title.y = element_text(colour = "white"),
-        axis.ticks.y = element_line(colour = "white"),
-        axis.text.y = element_text(colour = "white"))
-
-#Site 369 regressions
-L369 <- filter(new.df, subsite_id == "369-L")
-m369L <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "369-L"))
-p369_L <- p + 
-  geom_point(data = L369, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = L369, aes(y = predict(m369L, L369, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = L369, aes(y = (predict(m369L, L369, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m369L, L369, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = L369, aes(y = (predict(m369L, L369, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m369L, L369, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) + 
-  xlab("") + ylab("")
-
-#369-M
-M369 <- filter(new.df, subsite_id == "369-M")
-m369M <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "369-M"))
-p369_M <- p + 
-  geom_point(data = M369, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = M369, aes(y = predict(m369M, M369, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = M369, aes(y = (predict(m369M, M369, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m369M, M369, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = M369, aes(y = (predict(m369M, M369, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m369M, M369, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +
-  ylab("") +
-  theme(axis.title.y = element_text(colour = "white"),
-        axis.ticks.y = element_line(colour = "white"),
-        axis.text.y = element_text(colour = "white"))
-
-#p369-H
-H369 <- filter(new.df, subsite_id == "369-H")
-m369H <- lm( correct_elev_m ~ Dist_from_edge ,data = filter(new.df, subsite_id == "369-H"))
-p369_H <- p + 
-  geom_point(data = H369, aes(Dist_from_edge, correct_elev_m), pch = 1) + 
-  geom_line(data = H369, aes(y = predict(m369H, H369, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(data = H369, aes(y = (predict(m369H, H369, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(m369H, H369, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(data = H369, aes(y = (predict(m369H, H369, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(m369H, H369, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +
-  xlab("") + ylab("") +
-  theme(axis.title.y = element_text(colour = "white"),
-        axis.ticks.y = element_line(colour = "white"),
-        axis.text.y = element_text(colour = "white"))
-
-
-#put them together
-grid.plot.1 <- grid.arrange(
-  p345_L, p345_M, p345_H, 
-  p311_L, p311_M, p311_H, 
-  p369_L, p369_M, p369_H,
-  ncol = 3)
-
-
-ggsave(filename = "Elev_ANCOVA_gridarrange_BW.png", plot = grid.plot.1, height = 4, width = 6, units = "in", dpi = 300)
-
-
-
-
-
-
-
-
-####################  Quick and dirty glmm version  with plot  ###############################################
-library(lme4)
-m2 <- lmer(data = new.df, correct_elev_m ~ Dist_from_edge + (1 + Dist_from_edge|subsite_id))
-
-#extract fixed effects
-a <- fixef(m2)
-
-
-#extract random effects
-b <- ranef(m2, condVar = TRUE)
-
-#Extract variances of the random effect
-qq <- attr(b[[1]], "postVar")
-e <- (sqrt(qq))
-
-
-e <- e[2,2,] #here we want to access the Distance from edge column, which is stored in column 2 in b[[1]], that's why I use the [,2,2]
-
-
-
-#calculate CI's, liminf = lower confidence interval, limsup is upper confidence interval
-liminf <- (b[[1]][2] + a[2]) - (e * 2)
-mean_ <- (b[[1]][2] + a[2])
-limsup <- (b[[1]][2] + a[2]) + (e * 2)
-
-#Plot betas and its errors
-dotchart(mean_$Dist_from_edge, labels = rownames(mean_), cex = 0.5, xlim = c(min(liminf),max(limsup)), xlab = "betas")
-
-#add CI's...
-for (i in 1:nrow(mean_)){
-  lines(x = c(liminf[i,1], limsup[i,1]), y = c(i,i)) 
-}
-
-#make final plot, a color for each subsite
-plot(correct_elev_m ~ Dist_from_edge, data = new.df, 
-     col = subsite_id, las = 1,
-     xlab = "Distance from Marsh Edge (m)", ylab = "Marsh Elevation (m)")
-
-
-#and plot each random slope
-abline(a = b[[1]][1,1]+a[1], b= mean_$Dist_from_edge[1], col = 1, lwd = 2)
-abline(a = b[[1]][2,1]+a[1], b= mean_$Dist_from_edge[2], col = 2, lwd = 2)
-abline(a = b[[1]][3,1]+a[1], b= mean_$Dist_from_edge[3], col = 3, lwd = 2)
-abline(a = b[[1]][4,1]+a[1], b= mean_$Dist_from_edge[4], col = 4, lwd = 2)
-abline(a = b[[1]][5,1]+a[1], b= mean_$Dist_from_edge[5], col = 5, lwd = 2)
-abline(a = b[[1]][6,1]+a[1], b= mean_$Dist_from_edge[6], col = 6, lwd = 2)
-abline(a = b[[1]][7,1]+a[1], b= mean_$Dist_from_edge[7], col = 7, lwd = 2)
-abline(a = b[[1]][8,1]+a[1], b= mean_$Dist_from_edge[8], col = 8, lwd = 2)
-abline(a = b[[1]][9,1]+a[1], b= mean_$Dist_from_edge[9], col = 9, lwd = 2)
-
-#and general response
-abline(a, lty = 2, lwd = 2)
-
-
-
-#make final plot, a color for each site
-plot(correct_elev_m ~ Dist_from_edge, data = new.df, 
-     col = crms_site, las = 1,
-     xlab = "Distance from Marsh Edge (m)", ylab = "Marsh Elevation (m)")
-
-
-#and plot each random slope
-abline(a = b[[1]][1,1]+a[1], b= mean_$Dist_from_edge[1], col = 1, lwd = 2)
-abline(a = b[[1]][2,1]+a[1], b= mean_$Dist_from_edge[2], col = 1, lwd = 2)
-abline(a = b[[1]][3,1]+a[1], b= mean_$Dist_from_edge[3], col = 1, lwd = 2)
-abline(a = b[[1]][4,1]+a[1], b= mean_$Dist_from_edge[4], col = 2, lwd = 2)
-abline(a = b[[1]][5,1]+a[1], b= mean_$Dist_from_edge[5], col = 2, lwd = 2)
-abline(a = b[[1]][6,1]+a[1], b= mean_$Dist_from_edge[6], col = 2, lwd = 2)
-abline(a = b[[1]][7,1]+a[1], b= mean_$Dist_from_edge[7], col = 3, lwd = 2)
-abline(a = b[[1]][8,1]+a[1], b= mean_$Dist_from_edge[8], col = 3, lwd = 2)
-abline(a = b[[1]][9,1]+a[1], b= mean_$Dist_from_edge[9], col = 3, lwd = 2)
-
-#and general response
-abline(a, lty = 2, lwd = 3)
-
-
-#model summary
-library(sjstats)
-p_value(m2)
-
-#random effect variances
-re_var(m2)
-
-#get r-squared
-r2(m2)
-
-######---------------  Model 3 glm, surface plots####, not used
-# mod3 <- glm(correct_elev_m ~ Dist_from_edge + bogaert, data = new.df)
-# summary(mod3)
-# AIC(mod3)
-# coef(mod3)
-# Anova(mod3)
-# RsquareAdj(mod3); r.squaredGLMM(mod3)
-# 
-# #make a grid to predict the surface
-# dist <- seq(min(new.df$Dist_from_edge, na.rm = T)-0.5, max(new.df$Dist_from_edge, na.rm = T)+0.5, .05 )
-# bog <- seq(min(new.df$bogaert, na.rm = T)-0.5, max(new.df$bogaert, na.rm = T)+0.5, .1 )
-# gom_grid <- expand.grid(dist, bog)
-# colnames(gom_grid) <- c("Dist_from_edge","bogaert")
-# 
-# # Predict elevation in two dimensions
-# gom_grid$correct_elev_m <- predict(mod3, gom_grid, type = "response")
-# 
-# 
-# 
-# # Make data into grid
-# library(reshape2)
-# Predicted_Elev <- acast(gom_grid, Dist_from_edge~bogaert, value.var = "correct_elev_m")
-# 
-# ### PLOT flat surface with contours ###
-# # Get range of values
-# z.range <- c(min(gom_grid$correct_elev_m), max(gom_grid$correct_elev_m))
-# y.range <- c(min(gom_grid$bogaert), max(gom_grid$bogaert))
-# x.range <- c(min(gom_grid$Dist_from_edge), max(gom_grid$Dist_from_edge))
-# 
-# # Plot contour
-# library(oce)
-# 
-# png("Elevation_glm_3.png", height = 4, width = 6, units = "in", res = 300)
-# par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
-# plot( x = NA, y =NA,  xlab = "Distance from Marsh Edge (m)", ylab = 'Bogaert Fragmentation Score',xlim = x.range, ylim = y.range,  main = "Predicted Elevation")
-# image(dist, bog, Predicted_Elev, col = oceColorsTemperature(100), cex.lab = 1.5, cex.axis = 1.4, add=T, zlim = c(min(Predicted_Elev), max(Predicted_Elev)))
-# contour(dist, bog, Predicted_Elev, add=T, color = "black", axes = F, xlab=NA,  ylab=NA, main = NA)
-# dev.off()
-# #or use plotly for 3d
-# library(plotly)
-# 
-# #Set font attributes
-# f <- list(
-#   family = "Arial",
-#   size = 18,
-#   color = "#7f7f7f")
-# 
-# # volcano is a numeric matrix that ships with R
-# plot_ly(z = ~Predicted_Elev) %>% add_surface() %>% 
-#   layout(
-#     title = "3d Surface of Model 3",
-#     scene = list(
-#       xaxis = list(title = "Distance from Edge", titlefont = f), 
-#       yaxis = list(title = "Bogaert Score", titlefont = f),
-#       zaxis = list(title = "Predicted Elevation", titlefont = f))) 
-# 
-# 
-# #Elevation summaries
-# elev_summ <- full.t %>% 
-#   filter(dist_from_edge_m != 'full_transect') %>% 
-#   group_by(crms_site, dist_from_edge_m) %>% 
-#   summarise(mean_elev = mean(correct_elev_m, na.rm = T), 
-#             elev_se = sd(correct_elev_m, na.rm = T)/n())
-# 
-# View(elev_summ)
-# 
-# overal_elev <- full.t %>% 
-#   group_by(dist_from_edge_m) %>% 
-#   summarise(mean_elev = mean(correct_elev_m, na.rm = T), 
-#             elev_se = sd(correct_elev_m, na.rm = T)/n())
-# 
-# View(overal_elev)
+#---------------  Model 3 glm
+mod3 <- glm(correct_elev_m ~ Dist_from_edge + bogaert, data = new.df)
+summary(mod3)
+AIC(mod3)
+coef(mod3)
+Anova(mod3)
+RsquareAdj(mod3); r.squaredGLMM(mod3)
+
+#make a grid to predict the surface
+dist <- seq(min(new.df$Dist_from_edge, na.rm = T)-0.5, max(new.df$Dist_from_edge, na.rm = T)+0.5, .05 )
+bog <- seq(min(new.df$bogaert, na.rm = T)-0.5, max(new.df$bogaert, na.rm = T)+0.5, .1 )
+gom_grid <- expand.grid(dist, bog)
+colnames(gom_grid) <- c("Dist_from_edge","bogaert")
+
+# Predict elevation in two dimensions
+gom_grid$correct_elev_m <- predict(mod3, gom_grid, type = "response")
+
+
+
+# Make data into grid
+library(reshape2)
+Predicted_Elev <- acast(gom_grid, Dist_from_edge~bogaert, value.var = "correct_elev_m")
+
+### PLOT flat surface with contours ###
+# Get range of values
+z.range <- c(min(gom_grid$correct_elev_m), max(gom_grid$correct_elev_m))
+y.range <- c(min(gom_grid$bogaert), max(gom_grid$bogaert))
+x.range <- c(min(gom_grid$Dist_from_edge), max(gom_grid$Dist_from_edge))
+
+# Plot contour
+library(oce)
+
+png("Elevation_glm_3.png", height = 4, width = 6, units = "in", res = 300)
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot( x = NA, y =NA,  xlab = "Distance from Marsh Edge (m)", ylab = 'Bogaert Fragmentation Score',xlim = x.range, ylim = y.range,  main = "Predicted Elevation")
+image(dist, bog, Predicted_Elev, col = oceColorsTemperature(100), cex.lab = 1.5, cex.axis = 1.4, add=T, zlim = c(min(Predicted_Elev), max(Predicted_Elev)))
+contour(dist, bog, Predicted_Elev, add=T, color = "black", axes = F, xlab=NA,  ylab=NA, main = NA)
+dev.off()
+#or use plotly for 3d
+library(plotly)
+
+#Set font attributes
+f <- list(
+  family = "Arial",
+  size = 18,
+  color = "#7f7f7f")
+
+# volcano is a numeric matrix that ships with R
+plot_ly(z = ~Predicted_Elev) %>% add_surface() %>% 
+  layout(
+    title = "3d Surface of Model 3",
+    scene = list(
+      xaxis = list(title = "Distance from Edge", titlefont = f), 
+      yaxis = list(title = "Bogaert Score", titlefont = f),
+      zaxis = list(title = "Predicted Elevation", titlefont = f))) 
+
+
+#Elevation summaries
+elev_summ <- full.t %>% 
+  filter(dist_from_edge_m != 'full_transect') %>% 
+  group_by(crms_site, dist_from_edge_m) %>% 
+  summarise(mean_elev = mean(correct_elev_m, na.rm = T), 
+            elev_se = sd(correct_elev_m, na.rm = T)/n())
+
+View(elev_summ)
+
+overal_elev <- full.t %>% 
+  group_by(dist_from_edge_m) %>% 
+  summarise(mean_elev = mean(correct_elev_m, na.rm = T), 
+            elev_se = sd(correct_elev_m, na.rm = T)/n())
+
+View(overal_elev)
 #--------------------------------------------------------------------------------------
 #------------------------ Under Water Elevation ~ Fragmentation -----------------------
 #--------------------------------------------------------------------------------------
@@ -1868,47 +1487,15 @@ preddat <- predict(wmod1, list(bogaert = x_range), type = 'response', se.fit=TRU
 
 dev.off()
 
-# png("water_depth_glm.png", height = 4, width = 6, units = "in", res = 300)
-# par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
-# plot(correct_elev_m ~ bogaert, data = water, las = 1,
-#      xlab = "Bogaert Fragmentation Metric", ylab = "Elevation (m)")
-# lines(x_range, preddat$fit, lwd = 2)
-# lines(x_range, preddat$fit + 1.96 * preddat$se.fit, lwd = 2, lty = 2)
-# lines(x_range, preddat$fit - 1.96 * preddat$se.fit, lwd = 2, lty = 2)
-# 
-# dev.off()
+png("water_depth_glm.png", height = 4, width = 6, units = "in", res = 300)
+par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
+plot(correct_elev_m ~ bogaert, data = water, las = 1,
+     xlab = "Bogaert Fragmentation Metric", ylab = "Elevation (m)")
+lines(x_range, preddat$fit, lwd = 2)
+lines(x_range, preddat$fit + 1.96 * preddat$se.fit, lwd = 2, lty = 2)
+lines(x_range, preddat$fit - 1.96 * preddat$se.fit, lwd = 2, lty = 2)
 
-
-
-
-#GGPLOT x axis flip and plotting lm error bars with geom_segment
-lowlim <- preddat$fit - 1.96 * preddat$se.fit
-upperlim <- preddat$fit + 1.96 * preddat$se.fit
-
-# water %>% ggplot(aes(bogaert, correct_elev_m)) + 
-#   geom_point(shape = 1) + 
-#   xlab(expression(phi)) + ylab("Bathymetry (m)") + 
-#   geom_segment(data = data.frame(x = x_range, y = preddat$fit),                                              #Predicted line of best fit
-#                aes(x, xend = dplyr::lead(x), y, yend = dplyr::lead(y)), size = 1) +
-#   geom_segment(data = data.frame(x = x_range, y = upperlim),                                                 #Upper limit
-#                aes(x, xend = dplyr::lead(x), y, yend = dplyr::lead(y)), size = 1, linetype ='dashed') +      
-#   geom_segment(data = data.frame(x = x_range, y = lowlim),                                                   #Lower limit
-#                aes(x, xend = dplyr::lead(x), y, yend = dplyr::lead(y)), size = 1, linetype = 2) +
-#   scale_x_reverse() +
-#   theme_classic(base_size = 12)
- 
-
-#Verrrry convoluded way to get the base equivelant but with flipped x coordinates
-p <- water %>% ggplot(aes(bogaert, correct_elev_m)) + 
-  geom_point(shape = 1) + 
-  xlab(expression(phi)) + ylab("Bathymetry (m)") + 
-  geom_line(aes(y = predict(wmod1, water, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(aes(y = (predict(wmod1, water, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(wmod1, water, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(aes(y = (predict(wmod1, water, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(wmod1, water, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  scale_x_reverse() +
-  theme_classic(base_size = 12)
-ggsave("frag_bathymetry_ggplot.png", plot = p, height = 4, width = 6, units = "in", dpi = 300)
- 
+dev.off()
 
 
 #--------------------------------------------------------------------------------------
@@ -1929,9 +1516,41 @@ plot(fitted(wmod1), resid(wmod1), xlab = 'fitted vals', ylab = 'residuals')
 abline(h = 0, lty = 2, lwd = 2, col = 'royalblue')
 
 
-# #or Complicated beta regressions
-# wmod2 <- betareg(SI ~ bogaert, data = water,link = "loglog")
-# wmod3 <- betareg(SI ~ bogaert, data = water)
+#or Complicated beta regressions
+wmod2 <- betareg(SI ~ bogaert, data = water,link = "loglog")
+wmod3 <- betareg(SI ~ bogaert, data = water)
+
+library(ggplot2)
+ggplot(water, aes(x = bogaert, y = SI)) +
+  geom_point(size = 4, aes(fill = subsite_id), shape = 21) +
+  scale_fill_grey() +
+  geom_line(aes(y = predict(wmod2, water),
+                colour = "log-log", linetype = "log-log")) +
+  geom_line(aes(y = predict(wmod3, water), 
+                colour = "logit", linetype = "logit")) +
+  scale_colour_manual("", values = c("red", "blue")) +
+  scale_linetype_manual("", values = c("solid", "dashed")) +
+  theme_classic() + theme(text=element_text(size=18, family = "Arial"))
+
+
+
+p <- ggplot(water, aes(x = bogaert, y = SI)) +
+  geom_point(size = 4, aes(fill = subsite_id), shape = 21) +
+  scale_fill_grey() +
+  geom_line(aes(y = predict(wmod2, water),
+                colour = "log-log", linetype = "log-log")) +
+  geom_line(aes(y = predict(wmod3, water), 
+                colour = "logit", linetype = "logit")) +
+  scale_colour_manual("", values = c("red", "blue")) +
+  scale_linetype_manual("", values = c("solid", "dashed")) +
+  theme_classic() + theme(text=element_text(size=18, family = "Arial"))
+ggsave("SI_betaregression.png", plot = p, height = 5, width = 5, units = "in", dpi = 300)
+
+
+
+
+AIC(wmod1); AIC(wmod2); AIC(wmod3)
+
 
 #Model 1 is better
 summary(lm(SI ~ bogaert, data = water)) #lm gives you r2
@@ -1958,24 +1577,6 @@ dev.off()
 
 
 
-#ggplot version
-water %>% ggplot(aes(bogaert, SI)) + 
-  geom_point(shape = 1) + 
-  xlab(expression(phi)) + ylab("% Likelihood SAV") + 
-  geom_line(aes(y = predict(wmod1, water, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(aes(y = (predict(wmod1, water, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(wmod1, water, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(aes(y = (predict(wmod1, water, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(wmod1, water, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  scale_x_reverse() +
-  theme_classic(base_size = 12)
-
-ggsave("frag_PercSI_ggplot.png", plot = last_plot(), height = 4, width = 6, units = "in", dpi = 300)
-
-
-
-
-
-
-
 #-------------  plot LM model, percentage SI
 wmod1 <- lm(SI_full ~ bogaert, data = water)
 
@@ -1991,24 +1592,6 @@ lines(x_range, preddat$fit, lwd = 2)
 lines(x_range, preddat$fit + 1.96 * preddat$se.fit, lwd = 2, lty = 2)
 lines(x_range, preddat$fit - 1.96 * preddat$se.fit, lwd = 2, lty = 2)
 dev.off()
-
-
-
-
-
-
-p <- water %>% ggplot(aes(bogaert, SI_full)) + 
-  geom_point(shape = 1) + 
-  xlab(expression(phi)) + ylab("% Surface Irradiance at Bottom") + 
-  geom_line(aes(y = predict(wmod1, water, type = 'response', se.fit=TRUE)$fit), size = 1) +      
-  geom_line(aes(y = (predict(wmod1, water, type = 'response', se.fit=TRUE)$fit + 1.96 * predict(wmod1, water, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  geom_line(aes(y = (predict(wmod1, water, type = 'response', se.fit=TRUE)$fit - 1.96 * predict(wmod1, water, type = 'response', se.fit=TRUE)$se.fit)), size = 1, linetype = 2) +      
-  scale_x_reverse() +
-  theme_classic(base_size = 12)
-ggsave("frag_SI_ggplot.png", plot = p, height = 4, width = 6, units = "in", dpi = 300)
-
-
-
 
 
 

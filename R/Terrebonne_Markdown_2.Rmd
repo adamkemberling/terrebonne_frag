@@ -1,0 +1,751 @@
+---
+title: "terrebonne_mkdwn_2"
+author: "Adam Kemberling"
+date: "6/25/2018"
+output: 
+  html_document:
+   toc: true
+   toc_float: true
+   print_df: tibble
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Terrebonne Frag Markdown 2
+
+```{r data management, message=FALSE, echo=FALSE, warning=FALSE}
+#load packages
+library(readxl)
+library(tidyverse)
+library(vegan)
+library(rgdal)
+library(plotly)
+
+#Move up one level to data sources
+setwd('..')
+
+#Import datasets
+boga <- read_xlsx("Bogaert calculation.xlsx")
+frag50 <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
+marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
+water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
+frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
+crms <- read.csv("crms_three_stations.csv")
+
+##### marsh management ####
+
+#make percent bare column
+marsh$perc_bare <- rep(0, nrow(marsh))
+for (i in 1:nrow(marsh)){
+marsh$perc_bare[i] <- 100 - sum(marsh[i,12:34], na.rm = TRUE)
+}
+
+#make any column changes, subset to just April
+marsh <- marsh %>% 
+  mutate(month = ifelse(lubridate::month(date) == 4, "April", "September"),
+         frag = factor(toupper(frag), levels = c("L","M","H")),
+         correct_elev_m = as.numeric(correct_elev_m),
+         depth_cm = as.numeric(depth_cm),
+         crms_site = factor(crms_site, levels = c("345", "311", "369")),
+         subsite_id = str_c(crms_site, frag, sep = "-"),
+         transect_id = str_c(subsite_id, station, sep = "-")) %>% 
+  filter(month == "April")
+
+#make id to join by site and frag level
+frag_metrics <- frag_metrics %>% mutate(
+  crms_site = Site,
+  crms_site = ifelse(crms_site == "C", 311, crms_site),
+  crms_site = ifelse(crms_site == "N", 369, crms_site),
+  crms_site = ifelse(crms_site == "S", 345, crms_site),
+  frag = `frag cat`,
+  subsite_id = str_c(crms_site, frag, sep = "-"))
+
+#join them to marsh dataset
+marsh <- marsh %>% left_join(., dplyr::select(frag_metrics, subsite_id, bogaert), by = "subsite_id") 
+
+```
+
+## Marsh Vegetation Dataset
+*Task*
+1. Total # marsh transects at each site and subsite 
+
+```{r marsh 1, warning=FALSE ,echo=FALSE, message=FALSE}
+
+#Total # marsh transects at each site and subsite; 
+marsh %>% group_by(crms_site) %>% summarise(quadrat_num = n(), transect_num = length(unique(transect_id))) #site
+marsh %>% group_by(crms_site, frag) %>% summarise(quadrat_num = n(), transect_num = length(unique(transect_id))) #subsite
+```
+
+*Task*
+2. total # transects that have Sa at each site and subsite;      
+     total # transects that have Sp at each site and subsite
+
+```{r marsh 2, warning=FALSE ,echo=FALSE, message=FALSE}
+#total # transects that have Sa at each site and subsite; 
+marsh %>% filter(pcov_sa > 0) %>% group_by(crms_site, frag) %>% summarise(Spartina_alt = "Yes",quadrat_num = n(), transect_num = length(unique(transect_id)))
+
+
+#total # transects that have Sp at each site and subsite
+marsh %>% filter(pcov_sp > 0) %>% group_by(crms_site, frag) %>% summarise(Spartina_pat = "Yes",quadrat_num = n(), transect_num = length(unique(transect_id))) 
+
+
+
+```
+
+*Task*
+3. Average, max, min, and range of elevation per subsite, and overall average max, min, range of elevation per site.     
+     Average, max, min, and range of elevation at each point along the transect (0, 2.5m, 5m) by site, and by subsite.     
+
+```{r marsh 3, warning=FALSE ,echo=FALSE, message=FALSE}
+
+marsh %>%  group_by(crms_site, frag) %>% 
+  summarise(elev_min = min(correct_elev_m, na.rm = TRUE),
+            elev_max = max(correct_elev_m, na.rm = TRUE),
+            elev_mean = mean(correct_elev_m, na.rm = TRUE))
+
+marsh %>%  group_by(crms_site, frag, dist_from_edge_m) %>% 
+  summarise(elev_min = min(correct_elev_m, na.rm = TRUE),
+            elev_max = max(correct_elev_m, na.rm = TRUE),
+            elev_mean = mean(correct_elev_m, na.rm = TRUE))
+```
+*Task*
+4. Check if Shannon Weiner should be bounded between 0-1; recheck your calculation for that and Simpsons. 
+
+Vegan package's diversity() function calculates each as:     
+
+**Shannon-Wiener**          
+$$ H = -\sum\limits_{i=1}^Sp_i*log_b*p_i$$
+ * Not bound 0-1     
+ * Shannon's index accounts for both abundance and evenness  of the species present    
+
+
+**Evenness**         
+$$ J = H/log(S)$$
+ * Evenness is a compliment to the Shannon index
+
+**Simpson's indices**           
+$$ D_1 = 1-\sum\limits_{i=1}^Sp_i^2$$
+ * bound 0-1     
+ * Often displayed this way as "$D1 = 1 - D", and referred to this way as Simpson's index of diversity, NOT simpson's index (D)     
+ * Calculated this way with "1-equation", to be more intuitive with larger Values = greater diversity     
+ * The index represents the probability that two individuals randomly selected from a sample will belong to different species     
+
+**Inverse Simpson**          
+$$ D_2 = \frac{1}{1-\sum\limits_{i=1}^Sp_i^2}~~~~~~~=~~~~~~~~D_2 = \frac{1}{D_1}$$
+* The higher the value, the greater the diversity. The maximum value is the number of species (or other category being used) in the sample. For example if there are five species in the sample, then the maximum value is 5.
+
+*Task*      
+Calculate diversity, evenness, richness on the quadrat scale and on the transect scale. So, for each transect, there should be a measure of diversity for 0m, 2.5m, and 5m, and a separate measure that includes all 3 quadrats for that transect.
+
+
+```{r marsh 4, warning=FALSE ,echo=FALSE, message=FALSE}
+library(vegan)
+
+#Species richness at quadrat scale
+marsh$Richness <- specnumber(marsh[,12:34])
+marsh$Shannon <- diversity(marsh[,12:34], "shannon")
+marsh$Evenness <- marsh$Shannon/log(marsh$Richness)         #Pielou's evenness
+marsh$Simpson <- diversity(marsh[,12:34], "simpson")
+
+#Making Table of diversity measurements by full transect and quadrat
+# 1. full transect measurements of diversity
+
+d.1 <- marsh %>% group_by(transect_id) %>%  
+  summarise(Sa = sum(pcov_sa),
+            Jr = sum(pcov_jr),
+            Ag = sum(pcov_ag),
+            Sp = sum(pcov_sp),
+            Ds = sum(pcov_ds),
+            Bm = sum(pcov_bm),
+            Sb = sum(pcov_sb),
+            Pv = sum(pcov_pv),
+            Is = sum(pcov_is),
+            St = sum(pcov_st),
+            Sr = sum(pcov_sr),
+            Sc = sum(pcov_sc),
+            Zm = sum(pcov_zm),
+            Ep = sum(pcov_ep),
+            Aa = sum(pcov_aa),
+            Pa = sum(pcov_pa),
+            Na = sum(pcov_na),
+            If = sum(pcov_if),
+            Bf = sum(pcov_bf),
+            Vl = sum(pcov_vl),
+            's?' = sum(`pcov_s?`),
+            pavi = sum(pcov_pavi),
+            ScAm = sum(pcov_ScAm)) 
+
+d.1 <- d.1 %>%  mutate(
+  Richness = specnumber(.[2:24]),
+  Shannon = diversity(.[2:24] , index = "shannon"),
+  Evenness = Shannon/log(Richness),
+  Simpson = diversity(.[2:24], index = "simpson"),
+  dist_from_edge_m = "full_transect") #%>% select(transect_id, dist_from_edge_m, Richness, Shannon, Evenness, Simpson)
+
+
+
+#this dataframe contains transect ID, quadrat number and all the diversity indices
+d.2 <- marsh %>% group_by(transect_id, dist_from_edge_m) %>%  
+  summarise(Sa = sum(pcov_sa),
+            Jr = sum(pcov_jr),
+            Ag = sum(pcov_ag),
+            Sp = sum(pcov_sp),
+            Ds = sum(pcov_ds),
+            Bm = sum(pcov_bm),
+            Sb = sum(pcov_sb),
+            Pv = sum(pcov_pv),
+            Is = sum(pcov_is),
+            St = sum(pcov_st),
+            Sr = sum(pcov_sr),
+            Sc = sum(pcov_sc),
+            Zm = sum(pcov_zm),
+            Ep = sum(pcov_ep),
+            Aa = sum(pcov_aa),
+            Pa = sum(pcov_pa),
+            Na = sum(pcov_na),
+            If = sum(pcov_if),
+            Bf = sum(pcov_bf),
+            Vl = sum(pcov_vl),
+            's?' = sum(`pcov_s?`),
+            pavi = sum(pcov_pavi),
+            ScAm = sum(pcov_ScAm)) 
+
+#wtf why does this work
+d.2$Richness  <- specnumber(d.2[3:25])
+d.2$Shannon  <- diversity(d.2[3:25], index = "shannon")
+d.2$Evenness  <- d.2$Shannon/log(d.2$Richness)
+d.2$Simpson  <- diversity(d.2[3:25], index = "simpson")
+d.2$dist_from_edge_m = factor(d.2$dist_from_edge_m)
+
+# Pair them, make final changes
+diversity.df <- bind_rows(d.1, d.2)
+diversity.df <- diversity.df %>% dplyr::arrange(transect_id) %>% 
+  mutate(
+    crms_site = str_sub(transect_id, 1, 3),
+    subsite_id = str_sub(transect_id, 1, 5),
+    frag = str_sub(transect_id, 5,5)) %>%  
+  select(crms_site, subsite_id, frag, transect_id, dist_from_edge_m, everything()) 
+
+
+#This dataframe now contains diversity information by transect
+
+rm(d.1);rm(d.2)
+
+```
+
+## CRMS data 1/1/2015 - 12/31/2016
+*Task*
+Get average, max, min, range of salinity for each site from CRMS for 1 year prior to April sampling.
+
+
+```{r crms 1, warning=FALSE ,echo=FALSE, message=FALSE}
+#CRMS
+setwd('..')
+crms <- read.csv("crms_three_stations.csv")
+
+#summaries
+crms_sums <- crms %>% group_by(Station.ID) %>% summarise(
+                                            min_sal = min(salinity_raw, na.rm = TRUE),
+                                            mean_sal = mean(salinity_raw, na.rm = TRUE),
+                                            max_sal = max(salinity_raw, na.rm = TRUE),
+                                            temp_min = min(temp_raw, na.rm = TRUE),
+                                            mean_temp = mean(temp_raw, na.rm = TRUE),
+                                            max_temp = max(temp_raw, na.rm = TRUE)) %>% dplyr::rename(crms_site = Station.ID)
+crms_sums
+
+#Pair with diversity info
+diversity.df$crms_site <- factor(diversity.df$crms_site, levels = c("345", "311", "369"))
+crms_sums$crms_site <- factor(crms_sums$crms_site, levels = c("345", "311", "369"))
+
+diversity.df <- left_join(diversity.df, crms_sums, by = "crms_site")
+
+```
+
+## Open Water Survey
+*Task*
+Get average, max, min, range of salinity for each sub-site from open water sampling in April:
+
+*Problem:* 
+Lots of missing values ( > 50%) at the station level. Might not be able to look at salinity at a finer scale than subsite.
+
+```{r water 1, warning=FALSE ,echo=FALSE, message=FALSE}
+##### water management ####
+setwd('..')
+water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
+
+#distance between sensors
+sp <- .15
+
+#make light attenuation measurement 
+water <- water %>% mutate(
+  month = ifelse(lubridate::month(date) == 4, "April", "September"),
+  sal = as.numeric(sal),
+  correct_elev_m = as.numeric(correct_elev_m),
+  crms_site = factor(crms_site, levels = c("369", "311", "345")),
+  depth_cm = as.numeric(depth_cm)) %>% 
+  filter(month == "April") 
+
+
+#environmental variable sub-site summaries
+water_sums <- water %>% filter(month == "April") %>% mutate(
+    frag = toupper(frag),
+    subsite_id = str_c(crms_site, frag, sep = "-")) %>%
+  group_by(crms_site, subsite_id) %>% 
+  summarise(ss_sal_min = min(sal, na.rm = TRUE),
+            ss_sal_max = max(sal, na.rm = TRUE),
+            ss_sal_mean = mean(sal, na.rm = TRUE),
+            ss_elev_min = min(correct_elev_m, na.rm = TRUE),
+            ss_elev_max = max(correct_elev_m, na.rm = TRUE),
+            ss_elev_mean = mean(correct_elev_m, na.rm = TRUE)) %>% 
+  select(subsite_id, ss_sal_min, ss_sal_max,  ss_sal_mean, ss_elev_min,  ss_elev_max, ss_elev_mean)
+water_sums
+
+#Pair with diversity info
+diversity.df$subsite_id <- factor(diversity.df$subsite_id, levels = c("345-L", "311-L", "369-L","345-M", "311-M", "369-M","345-H", "311-H", "369-H"))
+water_sums$crms_site <- factor(water_sums$crms_site, levels = c("345", "311", "369"))
+water_sums$subsite_id <- factor(water_sums$subsite_id, levels = c("345-L", "311-L", "369-L","345-M", "311-M", "369-M","345-H", "311-H", "369-H"))
+
+diversity.df <- left_join(diversity.df, water_sums, by = c("subsite_id"))
+diversity.df <- diversity.df %>% select(-crms_site.y) %>% rename(crms_site = crms_site.x)
+
+```
+
+## Surface irradiance at the bottom
+
+Find the equation for percent surface irradiance at the bottom and see if you can calculate it with the data we have for the open water (you should be able to). You should need surface irradiance (topmost par sensor), bottom irradiance (bottommost par sensor) and water depth.
+
+For each sampling event at each station, we have two light meter measurements, at the surface and at the bottom.
+a light attenuation coefficient (Kd) can be calculated for either as:
+
+$$K_d = [ln(I_0/I_z)]/z$$
+
+where $I0$ is incident irradiance at the surface and $Iz$ is light intensity
+at depth (z) in meters (Kirk, 1994), or in our case with paired sensors z = distance between sensors in m. Light attenuation
+coefficients were not corrected for cloud cover or sun angle.
+
+Calculating the percentage of incident light reaching the bottom (%SI) is done in (Choice, Frazer, & Jacoby, 2014) as:
+$$ \%SI = (I_z/I_0) * 100 = exp(K_d*z) * 100$$
+This gives two ways to calculate %SI, and I am not sure if they are calculating the %SI for the whole water column or % light lost between the two bulbs, which should then be multiplied by total depth.
+
+
+```{r water 2, warning=FALSE ,echo=FALSE, message=FALSE}
+water <- water %>% mutate(
+  top_par1 = as.numeric(top_par1),                                          #bulb 1 is top bulb
+  top_par2 = as.numeric(top_par2),                                          #bulb 2 is low bulb
+  bot_par1 = as.numeric(bot_par1),
+  bot_par2 = as.numeric(bot_par2),                                                                       
+  Kd_surface = -(log10(top_par1 / top_par2)) / sp,                          #attenuation per .15m for surface measurements
+  Kd_bottom = -(log10(bot_par1 / bot_par2)) / sp,                           #Kd at bottom, per .15m
+  SI_1 = (top_par2/top_par1) * 100,                                         #%SI for top sensor, using left side of equation 
+  SI_2 = exp(Kd_surface*.15) * 100,                                         #%SI for same sensor, using right side of equation
+  SI_full = exp(Kd_surface * .15 * depth_cm) * 100,                         #multiply light lost in 15cm by (total depth/15cm increments)
+  SI_full_2 = (bot_par2/top_par1) * 100)
+
+# #To color by factor
+# pal <- c("red", "blue", "green")
+# pal <- setNames(pal, c("369", "311", "345"))
+# # and add , color = ~crms_site, colors = pal
+
+# plot_ly(data = water, x = ~SI_1, y = ~SI_2, type = "scatter", mode = "markers") %>% 
+# layout(title = 'Comparing %SI Calculations',
+#          yaxis = list(title = "exp(Kd_surface * distance between sensors) * 100"),
+#          xaxis = list(title = "(bottom bulb / top bulb) * 100"))
+
+plot_ly(data = water, x = ~SI_full, y = ~SI_full_2, type = "scatter", mode = "markers") %>% 
+layout(title = 'Comparing %SI Calculations 2',
+         yaxis = list(title = "(bot_par2/top_par1) * 100)"),
+         xaxis = list(title = "exp(Kd_surface * depth_cm) * 100)"))
+
+```
+
+
+If we compare the two %SI equations, one using just the bulb PAR values and the other using Kd, you can see that the equations yield different results that I'm unsure the height of the light meter off the bottom could explain away.
+
+
+# Ordination Plots and Analysis of Similarity (ANOSIM)
+
+
+
+```{r ordination plots, message=FALSE, warning=FALSE, echo=FALSE}
+##### Ordination Plot Setup #####
+
+#use the matrices that include the 2 bare sites
+pcov.mat.full <- as.matrix(diversity.df[,6:28], dimnames = list(diversity.df$transect_id, colnames(diversity.df[,3:25])), rownames.force = TRUE) #make a matrix of the percent cover values
+bin.mat.full <- ifelse(pcov.mat.full > 0, 1, 0) #binary species encounter matrix
+
+##### Metadata Preparation #####
+diversity.df <- diversity.df %>% mutate(quadrat_id = str_c(transect_id, dist_from_edge_m, sep = "-"))
+
+#add the raw quadrat info
+marsh.meta <- marsh %>% mutate(quadrat_id = str_c(transect_id, dist_from_edge_m, sep = "-")) %>% select(quadrat_id, correct_elev_m, depth_cm)
+
+#take the means for the full transect
+transect.meta <- marsh %>% select(transect_id, dist_from_edge_m, correct_elev_m, depth_cm) %>% 
+  group_by(transect_id) %>% 
+  summarise(dist_from_edge_m = mean(dist_from_edge_m, na.rm = TRUE),
+            correct_elev_m = mean(correct_elev_m, na.rm = TRUE),
+            depth_cm = mean(depth_cm, na.rm = TRUE)) %>% 
+  mutate(quadrat_id = str_c(transect_id, "full_transect", sep = "-"))
+
+diversity.df <- left_join(diversity.df, marsh.meta, by = "quadrat_id")
+diversity.df <- left_join(diversity.df, transect.meta[,2:5], by = "quadrat_id")
+rm(marsh.meta); rm(transect.meta)
+
+diversity.df[diversity.df$dist_from_edge_m == "full_transect", c("dist_from_edge_m.x", "correct_elev_m.x",  "depth_cm.x" )] <- diversity.df[diversity.df$dist_from_edge_m == "full_transect", c("dist_from_edge_m.y", "correct_elev_m.y",  "depth_cm.y" )]
+
+drop.cols <- c("dist_from_edge_m.y", "correct_elev_m.y",  "depth_cm.y" )
+
+diversity.df <- diversity.df %>% 
+  select(-one_of(drop.cols)) %>% 
+  rename(dist_from_edge_m = dist_from_edge_m.x,
+         correct_elev_m = correct_elev_m.x,
+         depth_cm = depth_cm.x)
+
+#metadata at the quadrat scale
+diversity.meta <- diversity.df %>% select(crms_site, subsite_id, transect_id, quadrat_id, dist_from_edge_m, Richness:depth_cm)
+
+
+
+#####  need to remove any empty quadrats prior to nmds plot creation  #####
+# remove empty sites to calculate ordination distances:
+diversity.df.2 <- diversity.df[rowSums(diversity.df[,6:28]) != 0,]
+diversity.meta.2 <- diversity.meta[rowSums(diversity.df[,6:28]) != 0,]
+
+
+#diversity.df.2, and meta.2 will now be consolidated to whatever factor level you care about
+diversity.df.2 <- diversity.df.2 %>% filter(dist_from_edge_m == "full_transect") %>%      #either start with full transects or exclude them
+  group_by(subsite_id) %>% 
+  summarise(
+    Sa = sum(Sa),
+    Jr = sum(Jr),
+    Ag = sum(Ag),
+    Sp = sum(Sp),
+    Ds = sum(Ds),
+    Bm = sum(Bm),
+    Sb = sum(Sb),
+    Pv = sum(Pv),
+    Is = sum(Is),
+    St = sum(St),
+    Sr = sum(Sr),
+    Sc = sum(Sc),
+    Zm = sum(Zm),
+    Ep = sum(Ep),
+    Aa = sum(Aa),
+    Pa = sum(Pa),
+    Na = sum(Na),
+    If = sum(If),
+    Bf = sum(Bf),
+    Vl = sum(Vl),
+    's?' = sum(`s?`),
+    pavi = sum(pavi),
+    ScAm = sum(ScAm))
+
+#metadeta is different at different scales, so be careful with summarise()
+diversity.meta.2 <- diversity.meta.2 %>% filter(dist_from_edge_m == "full_transect") %>%
+  group_by(subsite_id) %>% 
+  summarise(min_sal = mean(min_sal),
+            mean_sal = mean(mean_sal),
+            max_sal = mean(max_sal),
+            temp_min = mean(temp_min),
+            mean_temp = mean(mean_temp),
+            max_temp = mean(max_temp),
+            ss_sal_min = mean(ss_sal_min),
+            ss_sal_mean = mean(ss_sal_mean),
+            ss_sal_max = mean(ss_sal_max),
+            ss_elev_min = mean(ss_elev_min),
+            ss_elev_mean = mean(ss_elev_mean),
+            ss_elev_max = mean(ss_elev_max),
+            correct_elev_m = mean(correct_elev_m),
+            depth_cm = mean(depth_cm))
+
+diversity.meta.2$crms_site <- str_sub(diversity.meta.2$subsite_id, 1, 3)
+
+#need the row numbers and row id's to match!
+
+#percent cover and species encounter matrices
+pcov.mat <- as.matrix(diversity.df.2[,2:24], dimnames = list(diversity.df$transect_id, colnames(diversity.df[,3:25])), rownames.force = TRUE)
+bin.mat <- ifelse(pcov.mat > 0, 1, 0) #binary species encounter matrix
+
+#compare species richness between subsites
+boxplot(diversity.meta$Richness ~ diversity.meta$crms_site, ylab = "") 
+boxplot(diversity.meta$Richness ~ diversity.meta$subsite_id, ylab = "# of species")
+
+
+#####  calculate Bray-Curtis distance among sites  #####
+
+#add factor level rownames
+#pcov.mat <- as.data.frame(pcov.mat)
+#bin.mat <- as.data.frame(bin.mat)
+rownames(pcov.mat) <- diversity.meta.2$subsite_id
+rownames(bin.mat) <- diversity.meta.2$subsite_id
+
+pcov.bc.dist <- vegdist(pcov.mat, method = "bray")
+encounter.bc.dist <- vegdist(bin.mat, method = "bray")
+
+# cluster communities using average-linkage algorithm
+pcov.bc.clust <- hclust(pcov.bc.dist, method = "average")
+encounter.bc.clust <- hclust(encounter.bc.dist, method = "average")
+
+# plot cluster diagram
+plot(pcov.bc.clust, ylab = "Bray-Curtis dissimilarity")              #Relative Abundances
+plot(encounter.bc.clust, ylab = "Bray-Curtis dissimilarity")         #Encounter data
+
+
+#                            ordination
+# The metaMDS function automatically transforms data and checks solution
+# robustness
+pcov.bc.mds <- metaMDS(pcov.mat, dist = "bray", trace = FALSE)
+# Assess goodness of ordination fit (stress plot)
+stressplot(pcov.bc.mds)
+
+# plot site scores as text
+#ordiplot(pcov.bc.mds, display = "sites", type = "text")
+
+# automated plotting of results - tries to eliminate overlapping labels
+#ordipointlabel(pcov.bc.mds)
+
+
+#             ordination plots are highly customizable
+#library(extrafont)
+# 
+# par(ps = 16, cex.lab = 1.125, cex.axis = 1, family = "arial", xaxt = "n", yaxt = "n")
+# mds.fig <- ordiplot(pcov.bc.mds, type = "none", xlim = c(-1.25,1.5), ylim = c(-1.5,1), las = 1)
+# points(mds.fig, "sites", pch = 16, select = diversity.meta.2$crms_site == "311")
+# points(mds.fig, "sites", pch = 17, select = diversity.meta.2$crms_site == "369")
+# points(mds.fig, "sites", pch = 15, select = diversity.meta.2$crms_site == "345")
+# 
+# # add confidence ellipses around habitat types
+# ordiellipse(pcov.bc.mds, diversity.meta.2$crms_site, conf = 0.95, label = FALSE)
+# 
+# #tick marks
+# axis(side=1, at= seq(-2.0, 1.5, by = 0.5), labels = FALSE)
+# axis(side=2, at= seq(-1.5, 1.0, by = 0.5), labels = FALSE)
+# 
+# # overlay the cluster results we calculated earlier
+# #ordicluster(pcov.bc.mds, pcov.bc.clust, col = "gray")
+# 
+# 
+# #Add text
+# text(c(-1.7, -0.15, 1.25), c(-0.25, 0.1, -0.1), labels = c("CRMS 0345", "CRMS 0311", "CRMS 0369"))
+
+```
+
+
+## Using ggplot for ordination plot instead
+
+```{r ggplot version, message=FALSE, warning=FALSE, echo=FALSE, eval = FALSE}
+
+
+#################################
+##### Making ggplot version #####
+#################################
+#nmds object from earlier
+#pcov.bc.mds                                                                           
+pcov.envfit <- envfit(pcov.bc.mds, diversity.meta.2[,2:6], permutations = 999)        #env fit data
+
+
+#data for ggplotting 
+##NMDS points
+pcov.NMDS.data<-diversity.meta.2 #there are other ways of doing this. But this is the way I do it for ease of plotting
+pcov.NMDS.data$crms_site <- factor(pcov.NMDS.data$crms_site, levels = c("345", "311", "369"))
+
+
+#data for ellipse, in this case using the crms_site factor
+NMDS <- data.frame(MDS1 = pcov.bc.mds$points[,1], MDS2 = pcov.bc.mds$points[,2], group = diversity.meta.2$crms_site)
+NMDS.mean <- aggregate(NMDS[,1:2], by = list(group = NMDS$group),mean)
+
+# function for ellipsess - just run this, is used later
+veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100) 
+  {
+    theta <- (0:npoints) * 2 * pi/npoints
+    Circle <- cbind(cos(theta), sin(theta))
+    t(center + scale * t(Circle %*% chol(cov)))
+  }
+
+  df_ell <- data.frame()
+  for(g in levels(NMDS$group)){
+    df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
+                    veganCovEllipse(cov.wt(cbind(MDS1,MDS2),wt=rep(1/length(MDS1),length(MDS1)))$cov,center=c(mean(MDS1),mean(MDS2)))))
+                    ,group=g))
+  }
+  
+##species data
+stems<-colSums(pcov.mat) #total abundances for each species
+spps <- data.frame(scores(pcov.bc.mds, display = "species")) #dataframe of species scoes for plotting
+spps$species <- row.names(spps) # making a column with species names
+spps$colsums <- stems #adding the colSums from above
+spps<-spps[!is.na(spps$NMDS1) & !is.na(spps$NMDS2),] #removes NAs
+spps.colmedian <- median(spps$colsums) #create an object that is the median of the abundance of the measured species
+spps.colmean <- mean(spps$colsums) #creates a mean instead if you wish to use
+spps2 <- subset(spps,spps$colsums > spps.colmean) #select the most abundant species. Could discard fewer by going something like - spps$colsums>(spps.colmedian/2) instead
+spps2$species <- factor(spps2$species) #otherwise factor doesn't drop unused levels and it will throw an error
+
+
+# data for the envfit arrows
+env.scores <- as.data.frame(scores(pcov.envfit, display = "vectors")) #extracts relevant scores from envifit
+env.scores <- cbind(env.scores, env.variables = rownames(env.scores)) #and then gives them their names
+
+  
+  
+#ggplotting
+p <-  ggplot(data = NMDS, aes(MDS1, MDS2)) + geom_point(aes(color = group)) +
+    geom_path(data=df_ell, aes(x=MDS1, y=MDS2), colour = "black", size=1.25, linetype=2) +               #Ellipse
+    annotate("text", x=NMDS.mean$MDS1, y=NMDS.mean$MDS2,label=NMDS.mean$group) +                      #Ellipse label
+    scale_alpha_manual(guide = FALSE,values=c(0.3, 0.5, 0.7, 0.9)) +                                  #sets the shade for the ellipse
+    geom_point(aes(shape = group), colour = "black", size = 3) +                                        #puts the site points in
+    #geom_text(data=spps2, aes(x=spps2$NMDS1, y=spps2$NMDS2, label=species), size = 3.3, hjust=1.1)  + #labelling the species
+    #geom_segment(data = env.scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
+    #             arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +                         #arrows for envfit.
+    #geom_text(data = env.scores, aes(NMDS1, NMDS2, label= env.variables)) +
+    #geom_point(data = spps, aes(NMDS1,NMDS2), alpha = .6, shape = 4) +                              #these are the species points
+    scale_shape_manual(values = c(1,8,19,5)) +                                                      #sets the shape of the plot points
+    coord_cartesian(xlim = c(-1.25, 1.5), ylim = c(-0.6,0.6)) +                                   # Changes the visible area of the plot only
+    theme_classic() +
+    theme(text=element_text(size=16,
+        family="Arial"))
+p
+#ggplotly(p)
+
+  rm(env.score); rm(NMDS); rm(NMDS.mean); rm(pcov.NMDS.data)
+  rm(spps.colmean); rm(spps.colmedian); rm(stems);
+  rm(spps2); rm(spps)
+  
+```
+
+
+
+# ANOSIM, MRPP, Multivariate Analysis of Variance Using Distance Matrices
+
+ANOSIM is good, but is a rank-order test that will tend to group things together despite outliers.     
+MRPP is permutational, and is more sensitive to outliers so it can tend to make to find too many groups.     
+Multivariate Analysis of Variance using Distance Matrices canbe used in most situations that the others can, and is better in most ways.
+
+
+##Anosim at site and subsite levels
+
+
+```{r anosims site, message=FALSE, warning=FALSE, echo=FALSE}
+diversity.df.2 <- diversity.df[rowSums(diversity.df[,6:28]) != 0,]
+diversity.meta.2 <- diversity.meta[rowSums(diversity.df[,6:28]) != 0,]
+
+
+pcov.mat <- diversity.df.2[,6:28] #pcover data
+bin.mat <- ifelse(pcov.mat > 0, 1, 0) #encounter dataset
+# diversity.meta #metadata
+
+
+#####################################
+#Run ANOSIM
+#####################################
+
+#ANOSIM testing for differences among sites using a bray-curtis distance matrix
+site_ano <-anosim(pcov.mat, diversity.meta.2$crms_site, permutations=1000)
+summary(site_ano)
+
+#plot 
+plot(site_ano)
+
+# values in boxplots are mean ranks within and between groups
+tapply(site_ano$dis.rank, site_ano$class.vec, mean)
+
+# Can calculate R with these values
+mean_ranks<-tapply(site_ano$dis.rank, site_ano$class.vec,mean)
+between <- mean_ranks[1]
+within <- mean(mean_ranks[2:4])
+(between-within)/((36*35)/4)
+#plot a frequency distribution ofthe permuted R values
+hist(site_ano$perm)
+
+#ANOSIM testing for differences among subsite_ids using a bray-curtis distance matrix
+
+subsite_id_ano<-anosim(pcov.mat, diversity.meta.2$subsite_id, permutations=1000)
+summary(subsite_id_ano)
+#plot
+plot(subsite_id_ano)
+
+#plot a frequency distribution ofthe permuted R values
+hist(subsite_id_ano$perm)
+
+
+```
+
+## ANOSIM Diagnostics
+
+
+# Run Multivariate ANOVA for Distance Matrix
+
+
+```{r multivariate anova for distance matrix, message=FALSE, warning=FALSE, echo=FALSE, eval=FALSE}
+#####################################
+# multivariate ANOVA for distance matrix
+#####################################
+frag <- str_sub(diversity.meta.2$subsite_id, 5, 5)
+permanova <- adonis(diversity.df.2[,6:28] ~ frag * diversity.meta.2$crms_site, method="bray", permutations=1000)
+print(permanova)
+#histogram for assessment of the first factor
+hist(permanova$f.perms[,1])
+#histogram for assessment of the second factor
+hist(permanova$f.perms[,2])
+#species coefficient scores (??)
+print(permanova$coefficients)
+
+# Look for species that have large differences in coefficients among factor levels.
+# For example, Species7 has very large coefficient scores among years
+#plot(diversity.meta.2$crms_site, diversity.df.2[,6])
+# In contrast, Species6 has very similar coefficients for years
+#plot(year,community$Species6)
+
+
+# The multivariate ANOVA for distance matrix with Euclidean distance and one variable should be identical to a univariate ANOVA
+# community[,1] - uses just one variable (first species) from the community data
+permanova<-adonis(diversity.df.2[,6:28] ~ frag * diversity.meta.2$crms_site, method="euclidean", permutations=5000)
+permanova
+
+# Function lm for a standard linear model
+# Note the similarity between this and the adonis approach
+model<-lm(diversity.df.2[,6] ~ frag * diversity.meta.2$crms_site)
+anova(model)
+
+
+```
+
+
+## PERMANOVA Diagnostics
+
+# Spatial Interpolations
+
+# SAV models, glmm
+
+## Model 1: shannon_quadratscale ~ bogaert_subsite + elevation_quadrat + salinity_subsite + site(random)
+
+``` {r model 1, message=FALSE, warning=FALSE, echo=FALSE, eval=FALSE}
+mod.df <- diversity.meta
+ss_bog <- frag_metrics %>% mutate(crms_site = ifelse(Site == "N", 369, 345),
+                                  crms_site = ifelse(Site == "M", 311, crms_site),
+                                  subsite_id = str_c(crms_site, `frag cat`, sep = "-")) %>%
+  select(crms_site, subsite_id, bogaert)
+mod.df$crms_site <- factor(mod.df$crms_site, levels = c("345", "311", "369"))
+ss_bog$crms_site <- factor(ss_bog$crms_site, levels = c("345", "311", "369"))
+mod.df <- left_join(mod.df, ss_bog, by = c("crms_site", "subsite_id"))
+
+glm(Shannon ~ bogaert + correct_elev_m + ss_sal_mean + crms_site, data = mod.df, family = "gaussian")
+```
+
+## Model 2: simpsons ~ bogaert_subsite + elevation_quadrat + salinity_subsite + site(random)
+
+``` {r model 2, message=FALSE, warning=FALSE, echo=FALSE, eval=FALSE}
+```
+
+## Model 3: evenness ~ bogaert_subsite + elevation_quadrat + salinity_subsite + site(random)
+
+``` {r model 3, message=FALSE, warning=FALSE, echo=FALSE, eval=FALSE}
+```
+
+## Model 4: richness ~ bogaert_subsite + elevation_quadrat + salinity_subsite + site(random)
+
+``` {r model 4, message=FALSE, warning=FALSE, echo=FALSE, eval=FALSE}
+```
+
+
