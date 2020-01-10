@@ -18,7 +18,7 @@ library(MuMIn)
 
 #font setup
 #font_import()
-#loadfonts(device="pdf")       #Register fonts for pdf bitmap output
+loadfonts(device="pdf")       #Register fonts for pdf bitmap output
 #loadfonts(device="win")       #Register fonts for Windows bitmap output
 fonts() 
 
@@ -30,15 +30,15 @@ fonts()
 #----------------------------------- Import datasets ----------------------------------
 #--------------------------------------------------------------------------------------
 #Move up one level to data sources
-setwd('..')
+setwd('~/Dropbox/TBone_2019/data/')
 
 
-boga <- read_xlsx("Bogaert calculation.xlsx")
-frag50 <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
-marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
-water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
+boga         <- read_xlsx("Bogaert calculation.xlsx")
+frag50       <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
+marsh        <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
+water        <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
 frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
-full.t <- read_csv("all_transect_data.csv")
+full.t       <- read_csv("all_transect_data.csv")
 
 #throws <- read_xlsx("throw_trap_pts.dbf.xlsx") #contains midpoint coordinates used to create high res boxes
 #sites <- readOGR(dsn = "~/Users/adamkemberling/Dropbox (The Craboratory)/Terrebonne Fragmentation paper/Data/noaa_blu_basecamp.kml", layer = "noaa_blu_basecamp.kml")
@@ -192,7 +192,7 @@ full.transects <- full.transects %>% summarise(Sa = (sum(Sa)/ 189) * 100,
 species_freq <- t(full.transects)
 species_freq <- data.frame("Species" = rownames(species_freq), "Percent_of_Total_Transects" = as.numeric(species_freq[,1]))
 species_freq <- species_freq %>% arrange(desc(Percent_of_Total_Transects)) %>% mutate(Number_of_Transects = (Percent_of_Total_Transects/100) * 189)
-View(species_freq)
+#View(species_freq)
 
 
 
@@ -239,12 +239,12 @@ Table listing marsh plant species found by site and by Bogaert index.
 '
 #use the matrices that include the 2 bare sites
 pcov.mat.full <- as.matrix(marsh[,12:34], dimnames = list(marsh$renamed_station,colnames(marsh)), rownames.force = TRUE)   #make a matrix of the percent cover values
-bin.mat.full <- ifelse(pcov.mat.full > 0, 1, 0) #binary species encounter matrix
+bin.mat.full  <- ifelse(pcov.mat.full > 0, 1, 0) #binary species encounter matrix
 
 #1. Most abundant marsh plant overall
 colSums(bin.mat.full)
 
-
+####  Fix Code HERE 1/10/2020  ####
 library(magrittr)
 as.data.frame(bin.mat.full) %>% dplyr::group_by(crms_site) %>% summarise(
    Sa = sum(pcov_sa),

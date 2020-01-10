@@ -24,15 +24,15 @@ library(rgdal)
 library(plotly)
 
 #Move up one level to data sources
-setwd('..')
+setwd('~/Dropbox/TBone_2019/data/')
 
 #Import datasets
-boga <- read_xlsx("Bogaert calculation.xlsx")
-frag50 <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
-marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
-water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
+boga         <- read_xlsx("Bogaert calculation.xlsx")
+frag50       <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
+marsh        <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
+water        <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
 frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
-crms <- read.csv("crms_three_stations.csv")
+crms         <- read.csv("crms_three_stations.csv")
 
 ##### marsh management ####
 
