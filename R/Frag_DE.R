@@ -2,10 +2,8 @@
 # Adam A. Kemberling
 # 6/13/2018
 
-#--------------------------------------------------------------------------------------
-#---------------------------------------- load packages -------------------------------
-#--------------------------------------------------------------------------------------
-#library(conflicted)
+
+####  load packages  ####
 library(readxl)
 library(tidyverse)
 library(vegan)
@@ -16,19 +14,19 @@ library(car)
 library(lme4)
 library(MuMIn)
 
+
+####  fonts  ####
 #font setup
 #font_import()
-loadfonts(device="pdf")       #Register fonts for pdf bitmap output
+#loadfonts(device="pdf")       #Register fonts for pdf bitmap output
 #loadfonts(device="win")       #Register fonts for Windows bitmap output
 fonts() 
 
-#test push
-#test2
 
 
-#--------------------------------------------------------------------------------------
-#----------------------------------- Import datasets ----------------------------------
-#--------------------------------------------------------------------------------------
+
+####  Import datasets  ####
+
 #Move up one level to data sources
 setwd('~/Dropbox/TBone_2019/data/')
 
@@ -44,9 +42,9 @@ full.t       <- read_csv("all_transect_data.csv")
 #sites <- readOGR(dsn = "~/Users/adamkemberling/Dropbox (The Craboratory)/Terrebonne Fragmentation paper/Data/noaa_blu_basecamp.kml", layer = "noaa_blu_basecamp.kml")
 
 
-#--------------------------------------------------------------------------------------
-#--------- Pairing crms data with marsh and open water data by sampling time ----------
-#--------------------------------------------------------------------------------------
+####__####
+####  Pair crms data with marsh and open water data by sampling time  ####
+
 crms311 <- read.csv("HYDROGRAPHIC_HOURLY_311.csv")
 crms345 <- read.csv("HYDROGRAPHIC_HOURLY_345.csv")
 crms369 <- read.csv("HYDROGRAPHIC_HOURLY_369.csv")
@@ -91,9 +89,9 @@ crms %>%
   geom_label()
 
 
-#--------------------------------------------------------------------------------------
-#-------------------------- Marsh Survey Dataset "marsh" ------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Marsh Survey Dataset "marsh"  ####
+
 # Objectives:
 'So with this dataset:
 
@@ -113,9 +111,9 @@ Fragmentation
 Site
 Station'
 
-#--------------------------------------------------------------------------------------
-#---------------------------- Marsh Data Manipulation ---------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+#####  Marsh Data Manipulation  ####
+
 marsh <- read_xlsx("noaa_blu_objective1_marsh_survey.xlsx")
 
 #make any class/formatting changes
@@ -126,7 +124,7 @@ marsh <- marsh %>% mutate(
   depth_cm = as.numeric(depth_cm),
   crms_site = factor(crms_site, levels = c("345", "311", "369")),
   month = ifelse(lubridate::month(date) == 4, "April", "September"),
-  perc_bare = rep(0, nrow(marsh)),
+  perc_bare = 0,
   frag = factor(toupper(frag), levels = c("L","M","H"))) %>% 
   filter(month == "April") 
 
@@ -138,9 +136,9 @@ for (i in 1:nrow(marsh)){
 #map function
 
 
-#--------------------------------------------------------------------------------------
-#----------------------  Match bogaert scale to the subsites --------------------------
-#--------------------------------------------------------------------------------------
+####__####
+###  Match bogaert scale to the subsites  ####
+
 #low resolution bogaert values, subsite level
 frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
 frag_metrics %>% group_by(Site) %>% summarise(number = n())
@@ -196,9 +194,9 @@ species_freq <- species_freq %>% arrange(desc(Percent_of_Total_Transects)) %>% m
 
 
 
-#--------------------------------------------------------------------------------------
-#----------------------- vegan package diversity indices ------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+#### Diversity indices  ####
+
 #percent cover and species encounter matrices
 pcov.mat <- as.matrix(marsh[,12:34], dimnames = list(marsh$renamed_station,colnames(marsh)), rownames.force = TRUE)   #make a matrix of the percent cover values
 bin.mat <- ifelse(pcov.mat > 0, 1, 0) #binary species encounter matrix
@@ -221,9 +219,9 @@ marsh$Evenness <- marsh$Shannon/log(marsh$Richness)         #Pielou's evenness
 
 
 
-#--------------------------------------------------------------------------------------
-#-------------------------- species encounter summaries -------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Species encounter summaries ####
+
 '
 Marsh plants
 
@@ -244,9 +242,10 @@ bin.mat.full  <- ifelse(pcov.mat.full > 0, 1, 0) #binary species encounter matri
 #1. Most abundant marsh plant overall
 colSums(bin.mat.full)
 
-####  Fix Code HERE 1/10/2020  ####
-library(magrittr)
-as.data.frame(bin.mat.full) %>% dplyr::group_by(crms_site) %>% summarise(
+as.data.frame(bin.mat.full) %>% 
+  mutate(crms_site = marsh$crms_site) %>% 
+  dplyr::group_by(crms_site) %>% 
+  summarise(
    Sa = sum(pcov_sa),
    Jr = sum(pcov_jr),
    Ag = sum(pcov_ag),
@@ -349,9 +348,8 @@ data.frame(bogaert = c(sort(unique(marsh$bogaert))), spec_obs = c(3, 3, 12, 2, 4
 table(marsh$subsite_id, marsh$bogaert)
 
 
-#--------------------------------------------------------------------------------------
-#-------------------------------- data exploration plots ------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Data Exploration  ####
 
 
 #Simpson's diversity
@@ -440,67 +438,69 @@ ggplot(data = marsh, aes(frag, Simpson)) +
   ggtitle("Simpsons Diversity")
 
 #plot site locations
-library(ggmap)
-marsh$longitude <- as.numeric(marsh$longitude); marsh$latitude <- as.numeric(marsh$latitude)                  #make lats/longs numeric
-     
-#get satellite map function
-local_map <- function(x,y, buffer) {
-  e1 <- c(min(x, na.rm = TRUE) - buffer, min(y, na.rm = TRUE) - buffer, 
-          max(x, na.rm = TRUE) + buffer, max(y, na.rm = TRUE) + buffer)
-  get_map(location = c(e1), source = "google", maptype = "satellite")
-}
+marsh$longitude <- as.numeric(marsh$longitude); marsh$latitude <- as.numeric(marsh$latitude)   #make lats/longs numeric
 
-#maps
-satmap <- local_map(marsh[,"longitude"], marsh[,"latitude"], 0.05)
-marsh_311 <- local_map(marsh[marsh$crms_site == 311, "longitude"], marsh[marsh$crms_site == 311, "latitude"], 0.03)
-marsh_345 <- local_map(marsh[marsh$crms_site == 345, "longitude"], marsh[marsh$crms_site == 345, "latitude"], 0.03)
-marsh_369 <- local_map(marsh[marsh$crms_site == 369, "longitude"], marsh[marsh$crms_site == 369, "latitude"], 0.03)
-site.names <- data.frame(site = c("0369", "0311", "0345" ), 
-                         longitude = c(-90.71492, -90.76659, -90.73892),
-                         latitude = c(29.29509, 29.21496, 29.18148))
 
-#plot with satellite map
-ggmap(satmap,
-      extent = "device", # "panel" keeps in axes, etc.
-      ylab = "Latitude",
-      xlab = "Longitude",
-      legend = "right") +
-  geom_point(data = marsh,
-             aes(x = longitude, y = latitude, colour = frag)) +
-  geom_label(data = site.names, aes(x = longitude, y = latitude, label = site)) +
-  ggtitle("All Sites")
+## ggmap method now defunct 
+# #get satellite map function
+# library(ggmap)
+# local_map <- function(x,y, buffer) {
+#   e1 <- c(min(x, na.rm = TRUE) - buffer, min(y, na.rm = TRUE) - buffer, 
+#           max(x, na.rm = TRUE) + buffer, max(y, na.rm = TRUE) + buffer)
+#   get_map(location = c(e1), source = "google", maptype = "satellite")
+# }
 
-ggmap(marsh_311,
-      extent = "device", # "panel" keeps in axes, etc.
-      ylab = "Latitude",
-      xlab = "Longitude",
-      legend = "right") +
-  geom_point(data = marsh[marsh$crms_site == 311,],
-             aes(x = longitude, y = latitude, colour = frag)) +
-  ggtitle("CRMS311")
-
-ggmap(marsh_345,
-      extent = "device", # "panel" keeps in axes, etc.
-      ylab = "Latitude",
-      xlab = "Longitude",
-      legend = "right") +
-  geom_point(data = marsh[marsh$crms_site == 345,],
-             aes(x = longitude, y = latitude, colour = frag)) +
-  ggtitle("CRMS345")
-
-ggmap(marsh_369,
-      extent = "device", # "panel" keeps in axes, etc.
-      ylab = "Latitude",
-      xlab = "Longitude",
-      legend = "right") +
-  geom_point(data = marsh[marsh$crms_site == 369,],
-             aes(x = longitude, y = latitude, shape = frag)) +
-  ggtitle("CRMS369")
+# #maps
+# satmap <- local_map(marsh[,"longitude"], marsh[,"latitude"], 0.05)
+# marsh_311 <- local_map(marsh[marsh$crms_site == 311, "longitude"], marsh[marsh$crms_site == 311, "latitude"], 0.03)
+# marsh_345 <- local_map(marsh[marsh$crms_site == 345, "longitude"], marsh[marsh$crms_site == 345, "latitude"], 0.03)
+# marsh_369 <- local_map(marsh[marsh$crms_site == 369, "longitude"], marsh[marsh$crms_site == 369, "latitude"], 0.03)
+# site.names <- data.frame(site = c("0369", "0311", "0345" ), 
+#                          longitude = c(-90.71492, -90.76659, -90.73892),
+#                          latitude = c(29.29509, 29.21496, 29.18148))
+# 
+# #plot with satellite map
+# ggmap(satmap,
+#       extent = "device", # "panel" keeps in axes, etc.
+#       ylab = "Latitude",
+#       xlab = "Longitude",
+#       legend = "right") +
+#   geom_point(data = marsh,
+#              aes(x = longitude, y = latitude, colour = frag)) +
+#   geom_label(data = site.names, aes(x = longitude, y = latitude, label = site)) +
+#   ggtitle("All Sites")
+# 
+# ggmap(marsh_311,
+#       extent = "device", # "panel" keeps in axes, etc.
+#       ylab = "Latitude",
+#       xlab = "Longitude",
+#       legend = "right") +
+#   geom_point(data = marsh[marsh$crms_site == 311,],
+#              aes(x = longitude, y = latitude, colour = frag)) +
+#   ggtitle("CRMS311")
+# 
+# ggmap(marsh_345,
+#       extent = "device", # "panel" keeps in axes, etc.
+#       ylab = "Latitude",
+#       xlab = "Longitude",
+#       legend = "right") +
+#   geom_point(data = marsh[marsh$crms_site == 345,],
+#              aes(x = longitude, y = latitude, colour = frag)) +
+#   ggtitle("CRMS345")
+# 
+# ggmap(marsh_369,
+#       extent = "device", # "panel" keeps in axes, etc.
+#       ylab = "Latitude",
+#       xlab = "Longitude",
+#       legend = "right") +
+#   geom_point(data = marsh[marsh$crms_site == 369,],
+#              aes(x = longitude, y = latitude, shape = frag)) +
+#   ggtitle("CRMS369")
   
 
-#--------------------------------------------------------------------------------------
-#------------------------------  Site Level Ordinations  ------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Site Level Ordinations  #####
+
 #Dataset with full transect totals
 
 full.t <- read_csv("all_transect_data.csv")
@@ -565,7 +565,7 @@ plot(subsite.bc.clust, ylab = "Bray-Curtis dissimilarity", las = 2)
 # rownames(subsite.mat) <- metadata$bog_round
 # bogaert.bc.clust <-  vegdist(subsite.mat, method = "bray")
 # 
-# png("dendrogram_bogaert.png", height = 4, width = 5, units = "in", res = 300)
+# png("figures/dendrogram_bogaert.png", height = 4, width = 5, units = "in", res = 300)
 # par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial", xaxt = "n", yaxt = "n")
 # plot(bogaert.bc.clust, ylab = "Bray-Curtis dissimilarity", las = 2)
 # dev.off()
@@ -586,7 +586,7 @@ ordipointlabel(subsite.bc.mds)
 #             ordination plots are highly customizable set up the plotting area but
 
 # Set up plot dimensions
-png("NMDS_noaxes.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/NMDS_noaxes.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 #, xaxt = "n", yaxt = "n"
 mds.fig <- ordiplot(subsite.bc.mds, type = "none", xlim = c(-2,1.5), ylim = c(-1.5,1), las = 1, xaxt = "n", yaxt = "n")
@@ -606,7 +606,7 @@ dev.off()
 
 
 # Set up plot dimensions
-png("NMDS_axes.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/NMDS_axes.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 #, xaxt = "n", yaxt = "n"
 mds.fig <- ordiplot(subsite.bc.mds, type = "none", xlim = c(-1.7,1.4), ylim = c(-1.5,1), las = 1)
@@ -622,16 +622,16 @@ text(c(-1.9, -0.15, 1.25), c(-0.4, 0.1, -0.9), labels = c("CRMS 0345", "CRMS 031
 dev.off()
 
 
-#--------------------------------------------------------------------------------------
-#----------------------   Transect level ordination plot  -----------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Transect level ordination plot  ####
+
 
 pcov.mat <- full.t[full.t$dist_from_edge_m == "full_transect", 6:28]
 
 
-#--------------------------------------------------------------------------------------
-#------------------  ANOSIM to verify differences quantitatively ----------------------
-#--------------------------------------------------------------------------------------
+####__####
+####   ANOSIM to verify differences quantitatively  ####
+
 pcov.mat <- full.t[full.t$dist_from_edge_m != "full_transect",]
 pcov.mat <- pcov.mat[pcov.mat$Richness > 0, 6:28]
 metadata <- full.t[full.t$dist_from_edge_m != "full_transect", ]
@@ -648,7 +648,7 @@ dev.off()
 #plot 
 plot(site_ano)
 
-png("ANOSIM_site.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/ANOSIM_site.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(site_ano, las = 1)
 dev.off()
@@ -667,9 +667,9 @@ within <- mean(mean_ranks[2:4])
 hist(site_ano$perm)
 
 
-#--------------------------------------------------------------------------------------
-#---------------------  ANOSIM bogaert fragmentation  ---------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  ANOSIM bogaert fragmentation  ####
+
 frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
 frag_metrics <- frag_metrics %>% mutate(
   crms_site = Site,
@@ -692,7 +692,7 @@ bog_ano <- anosim(pcov.mat, metadata$bogaert, permutations = 1000)
 summary(bog_ano)
 
 #plot
-png("ANOSIM_bogaert.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/ANOSIM_bogaert.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 anosim_labels <- c("Between",c(as.character(sort(unique(round(as.numeric(as.character(metadata$bogaert)), digits = 2)), decreasing = T))))
 plot(bog_ano, las = 1, xaxt = "n")
@@ -705,9 +705,9 @@ hist(bog_ano$perm)
 
 
 
-#--------------------------------------------------------------------------------------
-#----------------------- Water Survey Dataset "water" ---------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Water Survey Dataset "water"  ####
+
 water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
 water[water$frag == "i", "frag"] <- "m" 
 water[water$frag == "m" & water$crms_site == 345,] #check that issue is fixed
@@ -745,9 +745,9 @@ water <- water %>% mutate(
   correct_elev_m = as.numeric(correct_elev_m)
 )
 
-#--------------------------------------------------------------------------------------
-#----------------------  Match bogaert scale to the subsites --------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####   Match bogaert scale to the subsites  ####
+
 #low resolution bogaert values, subsite level
 frag_metrics <- read_xlsx("Site level Frag_Metrics.xlsx")
 
@@ -804,13 +804,13 @@ water %>% filter(month == "April") %>% group_by(crms_site, frag) %>%
 #Check locations of open water 311-H and 345-H to see if they were switched
 #make lats/longs numeric
 
-#get satellite map function
-library(ggmap)
-local_map <- function(x,y, buffer) {
-  e1 <- c(min(x, na.rm = TRUE) - buffer, min(y, na.rm = TRUE) - buffer, 
-          max(x, na.rm = TRUE) + buffer, max(y, na.rm = TRUE) + buffer)
-  ggmap::get_map(location = c(e1), source = "google", maptype = "satellite")
-}
+# #get satellite map function
+# library(ggmap)
+# local_map <- function(x,y, buffer) {
+#   e1 <- c(min(x, na.rm = TRUE) - buffer, min(y, na.rm = TRUE) - buffer, 
+#           max(x, na.rm = TRUE) + buffer, max(y, na.rm = TRUE) + buffer)
+#   ggmap::get_map(location = c(e1), source = "google", maptype = "satellite")
+# }
 
 water <- water[!is.na(water$new_long),]
 water <- water[!is.na(water$new_lat),]
@@ -840,9 +840,9 @@ ggmap(satmap,
   geom_label(data = site.names, aes(x = longitude, y = latitude, label = site))
   
 
-#--------------------------------------------------------------------------------------
-#-----------------------  Table for open water survey models  -------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Table for open water survey models  ####
+
 water %>% mutate(
   bogaert = as.numeric(bogaert),
   temp_c = as.numeric(temp_c),
@@ -875,9 +875,8 @@ water %>% mutate(
 
 
 
-#--------------------------------------------------------------------------------------
-#--------------------------- Marsh Diversity GLM's  -----------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Marsh Diversity GLM's  ####
 
 mod.df <- read_csv("all_transect_data.csv")
 
@@ -917,9 +916,9 @@ subsite_divsum <- mod.df %>% group_by(crms_site, bogaert) %>% summarise(`min Ric
                                              `stderr Simpson` = sd(Simpson, na.rm = T)/ sqrt(n()))
 
 
-#--------------------------------------------------------------------------------------
-#-------------------------  Data Exploration, Shannon  --------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Data Exploration, Shannon  ####
+
 # glm(Shannon ~ bogaert + correct_elev_m + ss_sal_mean + (1 | crms_site), data = mod.df, family = "gaussian")
 
 # Shannon and Covariates
@@ -953,9 +952,9 @@ xyplot(CPUE.reps ~ X.labs | ID12, col = 1,
 
 
 
-#--------------------------------------------------------------------------------------
-#------------------------------- Simpson models ---------------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Simpson models  ####
+
 #Dataset with full transect totals
 full.t <- read_csv("all_transect_data.csv")
 
@@ -1071,9 +1070,9 @@ for (i in 1:length(unique(new.df$crms_site))) {
   abline(coef(mod6)$crms_site[i,1],coef(mod6)$crms_site[i,2], lty = i, lwd = 2)
 }
 
-#--------------------------------------------------------------------------------------
-#-------------------------------  Richness models ----------------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Richness models  ####
+
 #Data Exploration plots
 new.df %>% ggplot(aes(Richness)) + geom_histogram() + facet_wrap(~crms_site)
 mean(new.df$Richness); sd(new.df$Richness)
@@ -1093,6 +1092,7 @@ mod1 <- lm(Richness ~ crms_site, data = new.df)
 summary(mod1)
 anova(mod1)
 #plot(TukeyHSD(mod1))
+
 AIC(mod1)
 boxplot(Richness ~ crms_site, data = new.df, las = 1, 
         xlab = "CRMS Station", ylab = 'Species Richness',
@@ -1172,8 +1172,8 @@ for (i in 1:length(unique(new.df$crms_site))) {
 
 
 
-
-#------------- abandoned models ----
+####__####
+####  Abandoned models ####
 library(betareg)
 # #Negative Binomial
 # mod1 <- glmer.nb(Simpson ~ bogaert + correct_elev_m + ss_sal_mean + (1 | crms_site), data = new.df)
@@ -1251,9 +1251,9 @@ library(betareg)
 # #awful
 
 
-#--------------------------------------------------------------------------------------
-#------------------------------ Marsh Elevation GLM -----------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Marsh Elevation GLM  ####
+
 #Dataset with full transect totals
 full.t <- read_csv("all_transect_data.csv")
 
@@ -1306,7 +1306,7 @@ x_range <- seq(min(new.df$Dist_from_edge, na.rm = T), max(new.df$Dist_from_edge,
 preddat <- predict(mod1, list(Dist_from_edge = x_range), type = 'response', se.fit=TRUE)
 
 dev.off()
-png("Elevation_glm.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/Elevation_glm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(correct_elev_m ~ Dist_from_edge, data = new.df, las = 1,
      xlab = "Distance from Marsh Edge (m)", ylab = "Elevation (m)")
@@ -1332,7 +1332,7 @@ new.df  %>% group_by(subsite_id) %>% summarise(bogaert_value = mean(bogaert)) %>
 
 
 #Plot them all together
-png("Elevation_glmm.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/Elevation_glmm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(correct_elev_m ~ Dist_from_edge, data = new.df, las = 1,
      xlab = "Distance from Marsh Edge (m)", ylab = "Elevation (m)")
@@ -1377,7 +1377,7 @@ x.range <- c(min(gom_grid$Dist_from_edge), max(gom_grid$Dist_from_edge))
 # Plot contour
 library(oce)
 
-png("Elevation_glm_3.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/Elevation_glm_3.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot( x = NA, y =NA,  xlab = "Distance from Marsh Edge (m)", ylab = 'Bogaert Fragmentation Score',xlim = x.range, ylim = y.range,  main = "Predicted Elevation")
 image(dist, bog, Predicted_Elev, col = oceColorsTemperature(100), cex.lab = 1.5, cex.axis = 1.4, add=T, zlim = c(min(Predicted_Elev), max(Predicted_Elev)))
@@ -1417,9 +1417,10 @@ overal_elev <- full.t %>%
             elev_se = sd(correct_elev_m, na.rm = T)/n())
 
 View(overal_elev)
-#--------------------------------------------------------------------------------------
-#------------------------ Under Water Elevation ~ Fragmentation -----------------------
-#--------------------------------------------------------------------------------------
+
+####__####
+####  Under Water Elevation ~ Fragmentation  ####
+
 water <- read_xlsx("noaa_blu_objective1_openwater_survey.xlsx")
 
 #make light attenuation measurement 
@@ -1487,7 +1488,7 @@ preddat <- predict(wmod1, list(bogaert = x_range), type = 'response', se.fit=TRU
 
 dev.off()
 
-png("water_depth_glm.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/water_depth_glm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(correct_elev_m ~ bogaert, data = water, las = 1,
      xlab = "Bogaert Fragmentation Metric", ylab = "Elevation (m)")
@@ -1498,9 +1499,9 @@ lines(x_range, preddat$fit - 1.96 * preddat$se.fit, lwd = 2, lty = 2)
 dev.off()
 
 
-#--------------------------------------------------------------------------------------
-#------------------------------- %SI ~ bogaert ----------------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  %SI ~ bogaert  ####
+
 hist(water$SI_full)
 water$SI <- water$SI_full/100
 
@@ -1517,8 +1518,10 @@ abline(h = 0, lty = 2, lwd = 2, col = 'royalblue')
 
 
 #or Complicated beta regressions
-wmod2 <- betareg(SI ~ bogaert, data = water,link = "loglog")
-wmod3 <- betareg(SI ~ bogaert, data = water)
+??betareg
+
+wmod2 <- betareg::betareg(SI ~ bogaert, data = water,link = "loglog")
+wmod3 <- betareg::betareg(SI ~ bogaert, data = water)
 
 library(ggplot2)
 ggplot(water, aes(x = bogaert, y = SI)) +
@@ -1565,7 +1568,7 @@ preddat <- predict(wmod1, list(bogaert = x_range), type = 'response', se.fit=TRU
 
 dev.off()
 
-png("water_SI_glm.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/water_SI_glm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(SI ~ bogaert, data = water, las = 1,
      xlab = "Bogaert Fragmentation Metric", ylab = "% Surface Irradiance at Bottom")
@@ -1584,7 +1587,7 @@ x_range <- seq(min(water$bogaert, na.rm = T), max(water$bogaert, na.rm = T), by 
 preddat <- predict(wmod1, list(bogaert = x_range), type = 'response', se.fit=TRUE)
 
 
-png("water_SI_percent_glm.png", height = 4, width = 6, units = "in", res = 300)
+png("figures/water_SI_percent_glm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(SI_full ~ bogaert, data = water, las = 1,
      xlab = "Bogaert Fragmentation Metric", ylab = "% Surface Irradiance at Bottom")
@@ -1598,9 +1601,9 @@ dev.off()
 
 
 
-#--------------------------------------------------------------------------------------
-#-----------------------------% Likelihood SAV ----------------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  % Likelihood SAV  ####
+
 
 frag50 <- read_xlsx("Frag at 50m and SAV likelihood.xlsx")
 
@@ -1620,18 +1623,16 @@ AIC(mod1)
 x_range <- seq(min(frag50$bogaert), max(frag50$bogaert), by = 0.001)
 preddat <- predict(mod1, list(bogaert = x_range), type = 'response', se.fit=TRUE)
 ypred <- preddat$fit
-# lines(x_range, preddat$fit, lwd = 2)
-# lines(x_range, preddat$fit + 1.96 * preddat$se.fit, lwd = 2, lty = 2)
-# lines(x_range, preddat$fit - 1.96 * preddat$se.fit, lwd = 2, lty = 2)
 
 
-png("SAV_bog_glm.png", height = 4, width = 6, units = "in", res = 300)
+
+#png("figures/SAV_bog_glm.png", height = 4, width = 6, units = "in", res = 300)
 par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 plot(SAV ~ bogaert, data = frag50, xlab = 'Bogaert Fragmentation Score', ylab = "% Likelihood SAV present")
 lines(x_range, ypred, lwd = 2)
 lines(x_range, preddat$fit + 1.96 * preddat$se.fit, lwd = 2, lty = 2)
 lines(x_range, preddat$fit - 1.96 * preddat$se.fit, lwd = 2, lty = 2)
-dev.off()
+#dev.off()
 
 plot(fitted(mod1),resid(mod1), xlab = 'Fitted Values', ylab = 'Residuals')
 abline(h = 0, lty = 2, lwd = 2, col = 'blue')
@@ -1639,11 +1640,32 @@ abline(h = 0, lty = 2, lwd = 2, col = 'blue')
 hist(resid(mod1))
 
 
+#ggplot version
+x_range <- seq(min(frag50$bogaert), max(frag50$bogaert), by = 2)
+preddat <- predict(mod1, list(bogaert = x_range), type = 'response', se.fit=TRUE)
+mod1_preds <- data.frame(x = x_range,
+                         predicted = preddat$fit,
+                         ucl =  preddat$fit + 1.96 * preddat$se.fit,
+                         lcl =  preddat$fit - 1.96 * preddat$se.fit
+                         )
+(sav_bogaert <- ggplot(data = frag50, aes(bogaert, SAV)) +
+  geom_point(shape = 1) + 
+  geom_line(data = mod1_preds, aes(x, predicted), linetype = 1, size = 1) +
+  geom_line(data = mod1_preds, aes(x, ucl), linetype = 2, size = 1) +
+  geom_line(data = mod1_preds, aes(x, lcl), linetype = 2, size = 1) +
+  #geom_smooth(formula = y ~ x, method = "glm", color = "black", se = TRUE) +
+  scale_x_reverse() +
+  theme(axis.text = element_text(size = 14, family = "Arial", color = "black"),
+        axis.title = element_text(size = 14, family = "Arial", color = "black")) +
+  labs(x = "Bogaert Fragmentation Scale",
+       y = "% Likelihood of SAV"))
+
+ggsave(sav_bogaert, filename = "~/Dropbox/TBone_2019/figures/SAV_bog_glm.png", device = "png")
 
 
-#--------------------------------------------------------------------------------------
-#----------------------------- species encounter heatmap ------------------------------
-#--------------------------------------------------------------------------------------
+####__####
+####  Apecies encounter heatmap  ####
+
 full.t <- read_csv("all_transect_data.csv")
 
 full.t <- filter(full.t, dist_from_edge_m != "full_transect") %>% 
@@ -1723,7 +1745,7 @@ bin.mat.site <- bin.mat.site %>% select(-one_of(drop.cols))
 
 
 
-# png("pres_abs_tiles.png", height = 4, width = 6, units = "in", res = 300)
+# png("figures/pres_abs_tiles.png", height = 4, width = 6, units = "in", res = 300)
 # par(mar = c(5,5,4,2), ps = 16, cex.lab = 1.125, cex.axis = 1, family = "Arial")
 # image(t(as.matrix(bin.mat.site[c(3,1,2),23:2])), xlab = 'Species', ylab = 'CRMS Site', axes = F, col = c('gray60','white'))
 # axis(1, at = seq(0,1, 1/21), labels = colnames(bin.mat.site)[2:23], tick = T, line = NA, las = 2)
